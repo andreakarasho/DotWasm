@@ -338,6 +338,10 @@ public sealed class WasmLinker(WasmStore store)
                     {
                         Owner = instance,
                         Definition = module.Functions.AsSpan()[i],
+                        FlatType = GetFlatType(
+                            module,
+                            module.Functions.AsSpan()[i].TypeIndex
+                        ),
                     }
                 )
             );

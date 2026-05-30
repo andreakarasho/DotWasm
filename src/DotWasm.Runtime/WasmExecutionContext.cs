@@ -104,7 +104,7 @@ internal sealed class WasmExecutionContext
                     {
                         instance = func.Owner;
 
-                        var type = GetFlatType(instance.Module, func.Definition.TypeIndex);
+                        var type = func.FlatType;
                         var tailCall = Execute(
                             instance,
                             func.Definition.Body,

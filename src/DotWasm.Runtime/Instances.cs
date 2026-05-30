@@ -67,6 +67,7 @@ public sealed class RuntimeFunction
 {
     public required WasmInstance Owner { get; init; }
     public required Function Definition { get; init; }
+    public required FuncType FlatType { get; init; }
 }
 
 public sealed class HostFunction
