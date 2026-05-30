@@ -419,6 +419,11 @@ internal sealed class WasmExecutionContext
                     {
                         var call = Unsafe.As<CallInstruction>(instr);
                         var callee = instance.GetFunction((int)call.FunctionIndex);
+                        if (!HasActiveExceptionHandler(controlBase))
+                        {
+                            ExecuteFunction(instance, callee);
+                            break;
+                        }
                         try
                         {
                             ExecuteFunction(instance, callee);
@@ -447,6 +452,11 @@ internal sealed class WasmExecutionContext
                             callIndirect.TableIndex,
                             callIndirect.TypeIndex
                         );
+                        if (!HasActiveExceptionHandler(controlBase))
+                        {
+                            ExecuteFunction(instance, callee);
+                            break;
+                        }
                         try
                         {
                             ExecuteFunction(instance, callee);
@@ -487,6 +497,11 @@ internal sealed class WasmExecutionContext
                     {
                         var callRef = Unsafe.As<CallRefInstruction>(instr);
                         var callee = ResolveFunctionReference(instance, callRef.TypeIndex);
+                        if (!HasActiveExceptionHandler(controlBase))
+                        {
+                            ExecuteFunction(instance, callee);
+                            break;
+                        }
                         try
                         {
                             ExecuteFunction(instance, callee);
@@ -2427,6 +2442,23 @@ internal sealed class WasmExecutionContext
     {
         while (controlStack.Count > controlBase)
             controlStack.Pop();
+    }
+
+    // Returns true if any Try/TryTable control frame is currently active at or
+    // above controlBase for the current Execute() activation. When false, a
+    // WasmThrownException propagating out of a callee could not be handled here
+    // anyway, so the caller may skip the try/catch on the call hot path.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    bool HasActiveExceptionHandler(int controlBase)
+    {
+        var frames = controlStack.AsSpan();
+        for (var i = controlBase; i < frames.Length; i++)
+        {
+            var kind = frames[i].Kind;
+            if (kind == ControlFrameKind.Try || kind == ControlFrameKind.TryTable)
+                return true;
+        }
+        return false;
     }
 
     FunctionInstance ResolveIndirectFunction(WasmInstance instance, uint tableIndex, uint typeIndex)
