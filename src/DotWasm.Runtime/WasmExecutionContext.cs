@@ -169,6 +169,13 @@ internal sealed class WasmExecutionContext
 
         try
         {
+            // Cached MemoryInstance for the common memory index 0 within this
+            // Execute() invocation. 'instance' is fixed for the whole call, so the
+            // resolved MemoryInstance for index 0 never changes. memory.grow mutates
+            // the SAME MemoryInstance object's internal byte[] (and MemoryInstance.Data
+            // reads it fresh), so caching the MemoryInstance reference across a grow is
+            // safe. Do NOT cache the byte[]/Span here.
+            MemoryInstance? mem0 = null;
             int ip = 0;
             while (ip < instructions.Length)
             {
@@ -595,7 +602,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Load:
                     {
                         var mem = Unsafe.As<I32LoadInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -614,7 +624,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load:
                     {
                         var mem = Unsafe.As<I64LoadInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -629,7 +642,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.F32Load:
                     {
                         var mem = Unsafe.As<F32LoadInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -648,7 +664,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.F64Load:
                     {
                         var mem = Unsafe.As<F64LoadInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -667,7 +686,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Load8S:
                     {
                         var mem = Unsafe.As<I32Load8SInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var data = memory.Data;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -681,7 +703,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Load8U:
                     {
                         var mem = Unsafe.As<I32Load8UInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var data = memory.Data;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -695,7 +720,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Load16S:
                     {
                         var mem = Unsafe.As<I32Load16SInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -714,7 +742,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Load16U:
                     {
                         var mem = Unsafe.As<I32Load16UInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -733,7 +764,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load8S:
                     {
                         var mem = Unsafe.As<I64Load8SInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var data = memory.Data;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -747,7 +781,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load8U:
                     {
                         var mem = Unsafe.As<I64Load8UInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var data = memory.Data;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -761,7 +798,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load16S:
                     {
                         var mem = Unsafe.As<I64Load16SInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -780,7 +820,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load16U:
                     {
                         var mem = Unsafe.As<I64Load16UInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -799,7 +842,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load32S:
                     {
                         var mem = Unsafe.As<I64Load32SInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -818,7 +864,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Load32U:
                     {
                         var mem = Unsafe.As<I64Load32UInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
                             mem.Offset,
@@ -837,7 +886,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Store:
                     {
                         var mem = Unsafe.As<I32StoreInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = valueStack.UnsafePop().I32;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -854,7 +906,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Store:
                     {
                         var mem = Unsafe.As<I64StoreInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = valueStack.UnsafePop().I64;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -871,7 +926,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.F32Store:
                     {
                         var mem = Unsafe.As<F32StoreInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = valueStack.UnsafePop().F32;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -888,7 +946,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.F64Store:
                     {
                         var mem = Unsafe.As<F64StoreInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = valueStack.UnsafePop().F64;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -905,7 +966,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Store8:
                     {
                         var mem = Unsafe.As<I32Store8Instruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var data = memory.Data;
                         var storeValue = (byte)valueStack.UnsafePop().I32;
                         var address = CalcMemoryAddress(
@@ -920,7 +984,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I32Store16:
                     {
                         var mem = Unsafe.As<I32Store16Instruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = (ushort)valueStack.UnsafePop().I32;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -937,7 +1004,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Store8:
                     {
                         var mem = Unsafe.As<I64Store8Instruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var data = memory.Data;
                         var storeValue = (byte)valueStack.UnsafePop().I64;
                         var address = CalcMemoryAddress(
@@ -952,7 +1022,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Store16:
                     {
                         var mem = Unsafe.As<I64Store16Instruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = (ushort)valueStack.UnsafePop().I64;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -969,7 +1042,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.I64Store32:
                     {
                         var mem = Unsafe.As<I64Store32Instruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)mem.MemoryIndex);
+                        var memory =
+                            mem.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)mem.MemoryIndex);
                         var storeValue = (uint)valueStack.UnsafePop().I64;
                         var address = CalcMemoryAddress(
                             PopMemoryAddress(memory),
@@ -986,7 +1062,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.MemorySize:
                     {
                         var memSize = Unsafe.As<MemorySizeInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)memSize.MemoryIndex);
+                        var memory =
+                            memSize.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)memSize.MemoryIndex);
                         var pages = memory.Data.Length / 65536;
                         if (memory.AddressType == AddressType.I64)
                             valueStack.Push(WasmValue.FromI64(pages));
@@ -997,7 +1076,10 @@ internal sealed class WasmExecutionContext
                     case WasmOpCodes.MemoryGrow:
                     {
                         var memGrow = Unsafe.As<MemoryGrowInstruction>(instr);
-                        var memory = instance.GetMemoryInstance((int)memGrow.MemoryIndex);
+                        var memory =
+                            memGrow.MemoryIndex == 0
+                                ? (mem0 ??= instance.GetMemoryInstance(0))
+                                : instance.GetMemoryInstance((int)memGrow.MemoryIndex);
                         var deltaPages = PopPageCount(memory);
                         var oldPages = memory.Data.Length / WasmStore.PageSize;
                         var maxPages = memory.Max ?? 65536u;
