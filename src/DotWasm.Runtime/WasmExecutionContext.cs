@@ -1424,6 +1424,109 @@ internal sealed class WasmExecutionContext
                         valueStack.PushI32(BitOperations.PopCount((uint)val));
                         break;
                     }
+                    // ── Fused superinstructions: `local.get X; i32.const C; i32.<binop>` ──
+                    // `operand` = local index X; `operands[ip]` = constant C. The local is
+                    // guaranteed i32 (it feeds an i32 binop), so read its bits via .I32.
+                    // Push (localX <binop> C). ip += 2 skips the folded const + binop slots.
+                    case WasmOpCodes.FusedLocalGetConstAdd:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv + c);
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstSub:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv - c);
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstMul:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv * c);
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstAnd:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv & c);
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstOr:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv | c);
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstXor:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv ^ c);
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstShl:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv << (c & 0x1F));
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstShrS:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32(lv >> (c & 0x1F));
+                        break;
+                    }
+                    case WasmOpCodes.FusedLocalGetConstShrU:
+                    {
+                        var lv = Unsafe.Add(
+                            ref MemoryMarshal.GetReference(locals),
+                            localBase + (int)operand
+                        ).I32;
+                        var c = (int)operands[ip];
+                        ip += 2;
+                        valueStack.PushI32((int)((uint)lv >> (c & 0x1F)));
+                        break;
+                    }
                     // ── Fused superinstructions: `i32.const C; i32.<binop>` ──
                     // `operand` holds the constant C (the binop's RHS). The pre-existing
                     // stack top is the LHS; apply the op in place (no push/pop). ip++

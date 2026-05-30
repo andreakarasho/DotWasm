@@ -532,4 +532,17 @@ public static class WasmOpCodes
     public const byte FusedI32ConstShl = 0xDD;
     public const byte FusedI32ConstShrS = 0xDE;
     public const byte FusedI32ConstShrU = 0xDF;
+
+    // Fused `local.get X; i32.const C; i32.<binop>` (3 instructions -> 1): pushes
+    // (localX <binop> C). The local is guaranteed i32 (scalar) because it feeds an i32
+    // binop, so no reference check is needed. Free primary byte slots 0xE0-0xE8.
+    public const byte FusedLocalGetConstAdd = 0xE0;
+    public const byte FusedLocalGetConstSub = 0xE1;
+    public const byte FusedLocalGetConstMul = 0xE2;
+    public const byte FusedLocalGetConstAnd = 0xE3;
+    public const byte FusedLocalGetConstOr = 0xE4;
+    public const byte FusedLocalGetConstXor = 0xE5;
+    public const byte FusedLocalGetConstShl = 0xE6;
+    public const byte FusedLocalGetConstShrS = 0xE7;
+    public const byte FusedLocalGetConstShrU = 0xE8;
 }

@@ -42,17 +42,35 @@ public sealed record Expression
                 opCodes[i] = instructions[i].OpCode;
             }
 
-            // Fusion pass: rewrite the first slot of each fusible pair.
-            for (var i = 0; i + 1 < instructions.Length; i++)
+            // Fusion pass: rewrite the first slot of each fusible group. Longer groups
+            // are tried first so they take precedence over their sub-patterns.
+            for (var i = 0; i + 1 < instructions.Length; )
             {
+                // 3-op: local.get X ; i32.const C ; i32.<binop>
                 if (
-                    instructions[i] is I32ConstInstruction
-                    && TryFuseI32ConstBinOp(instructions[i + 1].OpCode, out var fused)
+                    i + 2 < instructions.Length
+                    && instructions[i] is LocalGetInstruction
+                    && instructions[i + 1] is I32ConstInstruction
+                    && TryFuseLocalGetConstBinOp(instructions[i + 2].OpCode, out var fused3)
                 )
                 {
-                    opCodes[i] = fused;
-                    i++; // skip the binop slot; do not start a new pair on it
+                    opCodes[i] = fused3;
+                    i += 3;
+                    continue;
                 }
+
+                // 2-op: i32.const C ; i32.<binop>
+                if (
+                    instructions[i] is I32ConstInstruction
+                    && TryFuseI32ConstBinOp(instructions[i + 1].OpCode, out var fused2)
+                )
+                {
+                    opCodes[i] = fused2;
+                    i += 2;
+                    continue;
+                }
+
+                i++;
             }
 
             _opCodes = opCodes;
@@ -73,6 +91,24 @@ public sealed record Expression
             WasmOpCodes.I32Shl => WasmOpCodes.FusedI32ConstShl,
             WasmOpCodes.I32ShrS => WasmOpCodes.FusedI32ConstShrS,
             WasmOpCodes.I32ShrU => WasmOpCodes.FusedI32ConstShrU,
+            _ => 0,
+        };
+        return fused != 0;
+    }
+
+    static bool TryFuseLocalGetConstBinOp(byte binOp, out byte fused)
+    {
+        fused = binOp switch
+        {
+            WasmOpCodes.I32Add => WasmOpCodes.FusedLocalGetConstAdd,
+            WasmOpCodes.I32Sub => WasmOpCodes.FusedLocalGetConstSub,
+            WasmOpCodes.I32Mul => WasmOpCodes.FusedLocalGetConstMul,
+            WasmOpCodes.I32And => WasmOpCodes.FusedLocalGetConstAnd,
+            WasmOpCodes.I32Or => WasmOpCodes.FusedLocalGetConstOr,
+            WasmOpCodes.I32Xor => WasmOpCodes.FusedLocalGetConstXor,
+            WasmOpCodes.I32Shl => WasmOpCodes.FusedLocalGetConstShl,
+            WasmOpCodes.I32ShrS => WasmOpCodes.FusedLocalGetConstShrS,
+            WasmOpCodes.I32ShrU => WasmOpCodes.FusedLocalGetConstShrU,
             _ => 0,
         };
         return fused != 0;
