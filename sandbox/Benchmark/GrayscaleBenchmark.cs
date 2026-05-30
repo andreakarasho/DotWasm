@@ -32,6 +32,8 @@ public class GrayscaleBenchmark
     DotWasm.Runtime.WasmInstance dotWasmInstance;
     DotWasm.Runtime.MemoryInstance dotWasmMemory;
 
+    byte[] sourceGenMemory;
+
     [GlobalSetup]
     public void Setup()
     {
@@ -89,6 +91,9 @@ public class GrayscaleBenchmark
             new Wacs.Core.Runtime.InvokerOptions()
         );
         sourceImage.CopyTo(wacsMemory.Data.AsSpan()[..ImageBytes]);
+
+        sourceGenMemory = new byte[ImageBytes];
+        sourceImage.CopyTo(sourceGenMemory.AsSpan());
     }
 
     [IterationCleanup]
@@ -133,5 +138,11 @@ public class GrayscaleBenchmark
     public void Bench_WACS()
     {
         wacsGrayscaleBench(0, PixelCount);
+    }
+
+    [Benchmark(Description = "DotWasm-SourceGen")]
+    public void Bench_dotWasm_SourceGen()
+    {
+        SourceGenGenerated.Grayscale(sourceGenMemory, 0, PixelCount);
     }
 }
