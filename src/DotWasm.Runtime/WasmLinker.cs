@@ -332,16 +332,30 @@ public sealed class WasmLinker(WasmStore store)
 
         for (int i = 0; i < module.Functions.Length; i++)
         {
+            var function = module.Functions.AsSpan()[i];
+            var flatType = GetFlatType(module, function.TypeIndex);
+
+            // Precompute which register slots (params then locals, in index order) must
+            // use the value stack's generic path. Scalar slots (i32/i64/f32/f64) use the
+            // bits-only fast path; reference-typed AND V128 slots must round-trip through
+            // the generic path because their payload lives in the WasmValue reference
+            // field, not the bits field.
+            var localParams = flatType.Parameters;
+            var localDefs = function.Locals;
+            var localIsRef = new bool[localParams.Length + localDefs.Length];
+            for (int p = 0; p < localParams.Length; p++)
+                localIsRef[p] = localParams[p] is RefType or V128Type;
+            for (int l = 0; l < localDefs.Length; l++)
+                localIsRef[localParams.Length + l] = localDefs[l] is RefType or V128Type;
+
             functionAddresses[functionOffset + i] = store.AddFunctionInstance(
                 new FunctionInstance(
                     new RuntimeFunction
                     {
                         Owner = instance,
-                        Definition = module.Functions.AsSpan()[i],
-                        FlatType = GetFlatType(
-                            module,
-                            module.Functions.AsSpan()[i].TypeIndex
-                        ),
+                        Definition = function,
+                        FlatType = flatType,
+                        LocalIsRef = localIsRef,
                     }
                 )
             );

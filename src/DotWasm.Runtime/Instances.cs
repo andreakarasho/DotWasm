@@ -68,6 +68,14 @@ public sealed class RuntimeFunction
     public required WasmInstance Owner { get; init; }
     public required Function Definition { get; init; }
     public required FuncType FlatType { get; init; }
+
+    /// <summary>
+    /// Per-register flag (params followed by locals, in index order) marking which local
+    /// slots are reference-typed. Lets the interpreter use the scalar fast path for
+    /// non-reference locals and the generic (reference-preserving) path for reference
+    /// locals.
+    /// </summary>
+    public required bool[] LocalIsRef { get; init; }
 }
 
 public sealed class HostFunction
