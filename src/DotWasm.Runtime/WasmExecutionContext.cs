@@ -146,6 +146,7 @@ internal sealed class WasmExecutionContext
     )
     {
         var instructions = expression.Instructions;
+        var opCodes = expression.OpCodes;
         var controlBase = controlStack.Count;
         controlStack.Push(
             new ControlFrame
@@ -179,9 +180,10 @@ internal sealed class WasmExecutionContext
             int ip = 0;
             while (ip < instructions.Length)
             {
+                var opCode = opCodes[ip];
                 var instr = instructions[ip];
                 ip++;
-                switch (instr.OpCode)
+                switch (opCode)
                 {
                     case WasmOpCodes.Nop:
                         break;
