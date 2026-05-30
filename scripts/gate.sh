@@ -25,6 +25,9 @@ FILES=(
   fac
   conversions float_misc
   simd_i32x4_arith simd_f32x4_arith
+  throw try_table tag
+  ref_func ref_null ref_is_null
+  struct array_ i31
 )
 
 DLL=$(find tests/DotWasm.SpecTest/bin/Release -name DotWasm.SpecTest.dll | head -1)
