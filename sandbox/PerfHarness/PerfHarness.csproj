@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Benchmark\grayscale_bench.wasm" CopyToOutputDirectory="PreserveNewest" Link="grayscale_bench.wasm" />
+    <None Include="..\Benchmark\collatz_bench.wasm" CopyToOutputDirectory="PreserveNewest" Link="collatz_bench.wasm" />
   </ItemGroup>
 </Project>
