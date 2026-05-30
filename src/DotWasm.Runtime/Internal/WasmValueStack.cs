@@ -234,6 +234,17 @@ internal struct WasmValueStack
         return ref Unsafe.Add(ref first, count - 1);
     }
 
+    /// <summary>
+    /// Returns a writable reference to the top scalar slot WITHOUT popping. Used by
+    /// fused const-binop superinstructions which apply an immediate to the top in place.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly ref ulong PeekTopBits()
+    {
+        AssertNotEmpty();
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bits), count - 1);
+    }
+
     [Conditional("DEBUG")]
     readonly void AssertNotEmpty()
     {

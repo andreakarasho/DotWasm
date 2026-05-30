@@ -14,6 +14,16 @@ public sealed record Expression
     /// opcode for each instruction from a cache-friendly contiguous array
     /// instead of dereferencing each polymorphic heap-allocated instruction
     /// record just to branch on its opcode.
+    ///
+    /// During construction, adjacent instruction pairs that match a known
+    /// superinstruction pattern are FUSED: the first slot's opcode is replaced
+    /// with a synthetic fused opcode (see <see cref="WasmOpCodes"/>), and the
+    /// interpreter's fused handler does the work of both instructions and skips
+    /// the second slot via the instruction pointer. The array length is never
+    /// changed, so every precomputed control-flow index (block/loop/if end and
+    /// branch targets) stays valid — and because Wasm branch targets are always
+    /// structured-control boundaries, the (non-control, mid-body) second
+    /// instruction of a fused pair can never be a jump target.
     /// </summary>
     public byte[] OpCodes
     {
@@ -32,9 +42,40 @@ public sealed record Expression
                 opCodes[i] = instructions[i].OpCode;
             }
 
+            // Fusion pass: rewrite the first slot of each fusible pair.
+            for (var i = 0; i + 1 < instructions.Length; i++)
+            {
+                if (
+                    instructions[i] is I32ConstInstruction
+                    && TryFuseI32ConstBinOp(instructions[i + 1].OpCode, out var fused)
+                )
+                {
+                    opCodes[i] = fused;
+                    i++; // skip the binop slot; do not start a new pair on it
+                }
+            }
+
             _opCodes = opCodes;
             return opCodes;
         }
+    }
+
+    static bool TryFuseI32ConstBinOp(byte binOp, out byte fused)
+    {
+        fused = binOp switch
+        {
+            WasmOpCodes.I32Add => WasmOpCodes.FusedI32ConstAdd,
+            WasmOpCodes.I32Sub => WasmOpCodes.FusedI32ConstSub,
+            WasmOpCodes.I32Mul => WasmOpCodes.FusedI32ConstMul,
+            WasmOpCodes.I32And => WasmOpCodes.FusedI32ConstAnd,
+            WasmOpCodes.I32Or => WasmOpCodes.FusedI32ConstOr,
+            WasmOpCodes.I32Xor => WasmOpCodes.FusedI32ConstXor,
+            WasmOpCodes.I32Shl => WasmOpCodes.FusedI32ConstShl,
+            WasmOpCodes.I32ShrS => WasmOpCodes.FusedI32ConstShrS,
+            WasmOpCodes.I32ShrU => WasmOpCodes.FusedI32ConstShrU,
+            _ => 0,
+        };
+        return fused != 0;
     }
 
     private long[]? _operands;

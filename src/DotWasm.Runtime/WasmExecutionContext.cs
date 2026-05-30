@@ -1424,6 +1424,73 @@ internal sealed class WasmExecutionContext
                         valueStack.PushI32(BitOperations.PopCount((uint)val));
                         break;
                     }
+                    // ── Fused superinstructions: `i32.const C; i32.<binop>` ──
+                    // `operand` holds the constant C (the binop's RHS). The pre-existing
+                    // stack top is the LHS; apply the op in place (no push/pop). ip++
+                    // skips the folded binop slot.
+                    case WasmOpCodes.FusedI32ConstAdd:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t + (int)operand));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstSub:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t - (int)operand));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstMul:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t * (int)operand));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstAnd:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t & (int)operand));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstOr:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t | (int)operand));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstXor:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t ^ (int)operand));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstShl:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t << ((int)operand & 0x1F)));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstShrS:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)((int)t >> ((int)operand & 0x1F)));
+                        break;
+                    }
+                    case WasmOpCodes.FusedI32ConstShrU:
+                    {
+                        ip++;
+                        ref var t = ref valueStack.PeekTopBits();
+                        t = unchecked((ulong)(int)((uint)(int)t >> ((int)operand & 0x1F)));
+                        break;
+                    }
                     case WasmOpCodes.I32Add:
                     {
                         ref var topBits = ref valueStack.PopBitsAndPeekTop(out var v2bits);
