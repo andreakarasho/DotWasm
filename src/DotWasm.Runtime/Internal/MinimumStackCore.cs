@@ -105,6 +105,23 @@ internal struct MinimumStackCore<T>
             throw new InvalidOperationException($"Stack is empty");
     }
 
+    /// <summary>
+    /// Pops the top element and returns it via <paramref name="popped"/>, then returns a
+    /// writable reference to the new top element (the element just below the popped one).
+    /// Used by binary operators which consume two operands and produce one result that
+    /// occupies the position of the first operand: this avoids the redundant capacity check
+    /// of a separate <see cref="Push"/> since popping never grows the backing array.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ref T PopAndPeekTop(out T popped)
+    {
+        AssertNotEmpty();
+        ref var first = ref MemoryMarshal.GetArrayDataReference(values!);
+        popped = Unsafe.Add(ref first, --count);
+        Debug.Assert(count > 0);
+        return ref Unsafe.Add(ref first, count - 1);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Span<T> Take(int n)
     {

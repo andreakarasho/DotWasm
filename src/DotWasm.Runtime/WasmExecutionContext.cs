@@ -1414,23 +1414,20 @@ internal sealed class WasmExecutionContext
                     }
                     case WasmOpCodes.I32Add:
                     {
-                        var v2 = valueStack.UnsafePop().I32;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 + v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 + v2.I32);
                         break;
                     }
                     case WasmOpCodes.I32Sub:
                     {
-                        var v2 = valueStack.UnsafePop().I32;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 - v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 - v2.I32);
                         break;
                     }
                     case WasmOpCodes.I32Mul:
                     {
-                        var v2 = valueStack.UnsafePop().I32;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 * v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 * v2.I32);
                         break;
                     }
                     case WasmOpCodes.I32DivS:
@@ -1476,44 +1473,38 @@ internal sealed class WasmExecutionContext
                     }
                     case WasmOpCodes.I32And:
                     {
-                        var v2 = valueStack.UnsafePop().I32;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 & v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 & v2.I32);
                         break;
                     }
                     case WasmOpCodes.I32Or:
                     {
-                        var v2 = valueStack.UnsafePop().I32;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 | v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 | v2.I32);
                         break;
                     }
                     case WasmOpCodes.I32Xor:
                     {
-                        var v2 = valueStack.UnsafePop().I32;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 ^ v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 ^ v2.I32);
                         break;
                     }
                     case WasmOpCodes.I32Shl:
                     {
-                        var v2 = valueStack.UnsafePop().I32 & 0x1F;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 << v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 << (v2.I32 & 0x1F));
                         break;
                     }
                     case WasmOpCodes.I32ShrS:
                     {
-                        var v2 = valueStack.UnsafePop().I32 & 0x1F;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32(v1 >> v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32(top.I32 >> (v2.I32 & 0x1F));
                         break;
                     }
                     case WasmOpCodes.I32ShrU:
                     {
-                        var v2 = valueStack.UnsafePop().I32 & 0x1F;
-                        var v1 = valueStack.UnsafePop().I32;
-                        valueStack.Push(WasmValue.FromI32((int)((uint)v1 >> v2)));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI32((int)((uint)top.I32 >> (v2.I32 & 0x1F)));
                         break;
                     }
                     case WasmOpCodes.I32Rotl:
@@ -1558,23 +1549,20 @@ internal sealed class WasmExecutionContext
                     }
                     case WasmOpCodes.I64Add:
                     {
-                        var v2 = valueStack.UnsafePop().I64;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 + v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 + v2.I64);
                         break;
                     }
                     case WasmOpCodes.I64Sub:
                     {
-                        var v2 = valueStack.UnsafePop().I64;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 - v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 - v2.I64);
                         break;
                     }
                     case WasmOpCodes.I64Mul:
                     {
-                        var v2 = valueStack.UnsafePop().I64;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 * v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 * v2.I64);
                         break;
                     }
                     case WasmOpCodes.I64DivS:
@@ -1620,44 +1608,38 @@ internal sealed class WasmExecutionContext
                     }
                     case WasmOpCodes.I64And:
                     {
-                        var v2 = valueStack.UnsafePop().I64;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 & v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 & v2.I64);
                         break;
                     }
                     case WasmOpCodes.I64Or:
                     {
-                        var v2 = valueStack.UnsafePop().I64;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 | v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 | v2.I64);
                         break;
                     }
                     case WasmOpCodes.I64Xor:
                     {
-                        var v2 = valueStack.UnsafePop().I64;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 ^ v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 ^ v2.I64);
                         break;
                     }
                     case WasmOpCodes.I64Shl:
                     {
-                        var v2 = valueStack.UnsafePop().I64 & 0x3F;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 << (int)v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 << (int)(v2.I64 & 0x3F));
                         break;
                     }
                     case WasmOpCodes.I64ShrS:
                     {
-                        var v2 = valueStack.UnsafePop().I64 & 0x3F;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64(v1 >> (int)v2));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64(top.I64 >> (int)(v2.I64 & 0x3F));
                         break;
                     }
                     case WasmOpCodes.I64ShrU:
                     {
-                        var v2 = valueStack.UnsafePop().I64 & 0x3F;
-                        var v1 = valueStack.UnsafePop().I64;
-                        valueStack.Push(WasmValue.FromI64((long)((ulong)v1 >> (int)v2)));
+                        ref var top = ref valueStack.PopAndPeekTop(out var v2);
+                        top = WasmValue.FromI64((long)((ulong)top.I64 >> (int)(v2.I64 & 0x3F)));
                         break;
                     }
                     case WasmOpCodes.I64Rotl:
