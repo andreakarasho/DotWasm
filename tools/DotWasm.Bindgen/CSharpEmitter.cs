@@ -8,7 +8,7 @@ public sealed class CSharpEmitter
     readonly string ns;
     readonly Dictionary<string, WitTypeDef> typeDefs = new();
     readonly HashSet<string> resources = new();
-    readonly StringBuilder sb = new();
+    StringBuilder sb = new();
 
     public CSharpEmitter(string ns, IEnumerable<WitInterface> interfaces)
     {
@@ -204,9 +204,24 @@ public sealed class CSharpEmitter
 
     // ---- interface + resource emission ----
 
+    // wasmName -> cached field name, per interface class
+    readonly Dictionary<string, string> funcFields = new();
+
+    /// <summary>Lazily-cached access to a ComponentFunc, avoiding a dictionary lookup per call.</summary>
+    string FnAccess(string wasmName)
+    {
+        if (!funcFields.TryGetValue(wasmName, out var field))
+        {
+            field = "_f_" + new string(wasmName.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+            funcFields[wasmName] = field;
+        }
+        return $"({field} ??= _inst.GetFunc(\"{wasmName}\"))";
+    }
+
     void EmitInterface(WitInterface iface)
     {
         var cls = Pascal(iface.Name);
+        funcFields.Clear();
         sb.AppendLine($"public sealed class {cls}");
         sb.AppendLine("{");
         sb.AppendLine("    readonly ComponentSubInstance _inst;");
@@ -214,12 +229,24 @@ public sealed class CSharpEmitter
         sb.AppendLine($"    public {cls}(ComponentInstance root) => _inst = root.GetInstance(\"{iface.ExportName}\")!;");
         sb.AppendLine();
 
+        // Emit method bodies into a temporary buffer so the cached fields they discover can be
+        // declared at the top of the class.
+        var outer = sb;
+        var body = new StringBuilder();
+        sb = body;
+
         foreach (var fn in iface.Funcs.Where(f => f.Kind is WitFuncKind.Free or WitFuncKind.Static))
             EmitCall(fn, fn.Name, null);
 
         foreach (var t in iface.Types.OfType<WitResourceDef>())
             foreach (var ctor in t.Methods.Where(m => m.Kind == WitFuncKind.Constructor))
                 EmitResourceFactory(t, ctor);
+
+        sb = outer;
+        foreach (var field in funcFields.Values)
+            sb.AppendLine($"    ComponentFunc? {field};");
+        sb.AppendLine();
+        sb.Append(body);
 
         sb.AppendLine("}");
         sb.AppendLine();
@@ -245,11 +272,14 @@ public sealed class CSharpEmitter
     {
         var ret = fn.Result is null ? "void" : CsType(fn.Result);
         var ps = string.Join(", ", fn.Params.Select(p => $"{CsType(p.Type)} {Camel(p.Name)}"));
-        // Cast each arg to object? so Invoke's params array never spreads a lowered list/record.
         var argList = (selfArg is null ? Enumerable.Empty<string>() : [$"(object?){selfArg}"])
             .Concat(fn.Params.Select(p => $"(object?)({Lower(Camel(p.Name), p.Type)})"));
-        var args = string.Join(", ", argList);
-        var call = $"_inst.Invoke(\"{wasmName}\"{(args.Length > 0 ? ", " + args : "")})";
+        var argArray = $"new object?[] {{ {string.Join(", ", argList)} }}";
+        // Resource methods (selfArg != null) live on a per-handle class and call via the
+        // sub-instance; free funcs use the interface's lazily-cached ComponentFunc.
+        var call = selfArg is null
+            ? $"{FnAccess(wasmName)}.Call({argArray})"
+            : $"_inst.Invoke(\"{wasmName}\", {string.Join(", ", argList)})";
         sb.AppendLine($"    public {ret} {Pascal(fn.Name)}({ps})");
         sb.AppendLine("    {");
         if (fn.Result is null) sb.AppendLine($"        {call};");
@@ -379,7 +409,7 @@ public sealed class CSharpEmitter
 
         sb.AppendLine($"    public {ret} {Pascal(fn.Name)}({ps})");
         sb.AppendLine("    {");
-        sb.AppendLine($"        var __fn = _inst.GetFunc(\"{wasmName}\");");
+        sb.AppendLine($"        var __fn = {FnAccess(wasmName)};");
         sb.AppendLine("        var __cx = __fn.CreateContext();");
         sb.AppendLine($"        var __args = ArrayPool<WasmValue>.Shared.Rent({Math.Max(1, argCount)});");
         sb.AppendLine($"        var __res = ArrayPool<WasmValue>.Shared.Rent({Math.Max(1, resCount)});");
@@ -708,7 +738,7 @@ public sealed class CSharpEmitter
         var args = string.Join(", ", ctor.Params.Select(p => $"(object?)({Lower(Camel(p.Name), p.Type)})"));
         sb.AppendLine($"    public {cls} New{cls}({ps})");
         sb.AppendLine("    {");
-        sb.AppendLine($"        var __r = _inst.Invoke(\"[constructor]{res.Name}\"{(args.Length > 0 ? ", " + args : "")});");
+        sb.AppendLine($"        var __r = {FnAccess($"[constructor]{res.Name}")}.Call(new object?[] {{ {args} }});");
         sb.AppendLine($"        return new {cls}((ResourceValue)__r[0]!, _inst);");
         sb.AppendLine("    }");
         sb.AppendLine();

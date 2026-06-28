@@ -80,9 +80,23 @@ public sealed class Ops
     public Ops(ComponentSubInstance inst) => _inst = inst;
     public Ops(ComponentInstance root) => _inst = root.GetInstance("test:comp/ops")!;
 
+    ComponentFunc? _f_add_point;
+    ComponentFunc? _f_sum_list;
+    ComponentFunc? _f_make_list;
+    ComponentFunc? _f_describe;
+    ComponentFunc? _f_divide;
+    ComponentFunc? _f_maybe_inc;
+    ComponentFunc? _f_next_color;
+    ComponentFunc? _f_perm_bits;
+    ComponentFunc? _f_swap;
+    ComponentFunc? _f_big_sum;
+    ComponentFunc? _f_f32_add;
+    ComponentFunc? _f_u64_add;
+    ComponentFunc? _f__constructor_counter;
+
     public Point AddPoint(Point a, Point b)
     {
-        var __fn = _inst.GetFunc("add-point");
+        var __fn = (_f_add_point ??= _inst.GetFunc("add-point"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(4);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -108,7 +122,7 @@ public sealed class Ops
 
     public int SumList(int[] xs)
     {
-        var __fn = _inst.GetFunc("sum-list");
+        var __fn = (_f_sum_list ??= _inst.GetFunc("sum-list"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(2);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -133,7 +147,7 @@ public sealed class Ops
 
     public uint[] MakeList(uint n)
     {
-        var __fn = _inst.GetFunc("make-list");
+        var __fn = (_f_make_list ??= _inst.GetFunc("make-list"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(1);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -156,25 +170,25 @@ public sealed class Ops
 
     public string Describe(Shape s)
     {
-        var __r = _inst.Invoke("describe", (object?)(Marshal.LowerShape(s)));
+        var __r = (_f_describe ??= _inst.GetFunc("describe")).Call(new object?[] { (object?)(Marshal.LowerShape(s)) });
         return (string)__r[0]!;
     }
 
     public Result<int, string> Divide(int a, int b)
     {
-        var __r = _inst.Invoke("divide", (object?)(a), (object?)(b));
+        var __r = (_f_divide ??= _inst.GetFunc("divide")).Call(new object?[] { (object?)(a), (object?)(b) });
         return Marshal.LiftResult<int, string>(__r[0], __o => (int)__o!, __e => (string)__e!);
     }
 
     public int? MaybeInc(int? x)
     {
-        var __r = _inst.Invoke("maybe-inc", (object?)(Marshal.LowerOptionVal(x, __o => __o)));
+        var __r = (_f_maybe_inc ??= _inst.GetFunc("maybe-inc")).Call(new object?[] { (object?)(Marshal.LowerOptionVal(x, __o => __o)) });
         return Marshal.LiftOptionVal<int>(__r[0], __o => (int)__o!);
     }
 
     public Color NextColor(Color c)
     {
-        var __fn = _inst.GetFunc("next-color");
+        var __fn = (_f_next_color ??= _inst.GetFunc("next-color"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(1);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -197,7 +211,7 @@ public sealed class Ops
 
     public uint PermBits(Perms p)
     {
-        var __fn = _inst.GetFunc("perm-bits");
+        var __fn = (_f_perm_bits ??= _inst.GetFunc("perm-bits"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(1);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -220,7 +234,7 @@ public sealed class Ops
 
     public (double, int) Swap((int, double) t)
     {
-        var __fn = _inst.GetFunc("swap");
+        var __fn = (_f_swap ??= _inst.GetFunc("swap"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(2);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -244,7 +258,7 @@ public sealed class Ops
 
     public int BigSum(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l, int m, int n, int o, int p, int q)
     {
-        var __fn = _inst.GetFunc("big-sum");
+        var __fn = (_f_big_sum ??= _inst.GetFunc("big-sum"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(1);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -284,7 +298,7 @@ public sealed class Ops
 
     public float F32Add(float a, float b)
     {
-        var __fn = _inst.GetFunc("f32-add");
+        var __fn = (_f_f32_add ??= _inst.GetFunc("f32-add"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(2);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -308,7 +322,7 @@ public sealed class Ops
 
     public ulong U64Add(ulong a, ulong b)
     {
-        var __fn = _inst.GetFunc("u64-add");
+        var __fn = (_f_u64_add ??= _inst.GetFunc("u64-add"));
         var __cx = __fn.CreateContext();
         var __args = ArrayPool<WasmValue>.Shared.Rent(2);
         var __res = ArrayPool<WasmValue>.Shared.Rent(1);
@@ -332,7 +346,7 @@ public sealed class Ops
 
     public Counter NewCounter(int init)
     {
-        var __r = _inst.Invoke("[constructor]counter", (object?)(init));
+        var __r = (_f__constructor_counter ??= _inst.GetFunc("[constructor]counter")).Call(new object?[] { (object?)(init) });
         return new Counter((ResourceValue)__r[0]!, _inst);
     }
 
