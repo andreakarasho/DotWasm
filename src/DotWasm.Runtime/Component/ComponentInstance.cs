@@ -151,6 +151,9 @@ public sealed class ImportedComponentFunc(ComponentFuncType type, Func<object?[]
 {
     public ComponentFuncType Type => type;
 
+    /// <summary>The import's "iface#func" key, for diagnostics (DOTWASM_TRACE_CALLS).</summary>
+    public string? Name { get; init; }
+
     public object?[] CallHost(object?[] args) => impl(args);
 }
 

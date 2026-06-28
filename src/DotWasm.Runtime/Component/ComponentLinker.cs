@@ -14,6 +14,11 @@ public sealed class ComponentLinker(WasmStore store)
     readonly Dictionary<string, Func<object?[], object?[]>> hostImports = [];
     readonly Dictionary<string, Func<object?[], object?[]>> hostImportFuncs = [];
 
+    // Diagnostic: DOTWASM_TRACE_CALLS=1 logs each host (lowered) import call — its name, the
+    // args lifted from the guest, and the result about to be lowered back. The last line before
+    // a guest trap names the call whose result/args DotWasm marshalled wrong.
+    static readonly bool traceCalls = Environment.GetEnvironmentVariable("DOTWASM_TRACE_CALLS") == "1";
+
     /// <summary>Provide a host implementation for a top-level function import, keyed by import name.</summary>
     public void DefineImport(string name, Func<object?[], object?[]> impl) => hostImports[StripVersion(name)] = impl;
 
@@ -351,7 +356,7 @@ public sealed class ComponentLinker(WasmStore store)
                     ?? throw new WasmComponentException("Imported func type is not a function type.");
                 if (!hostImports.TryGetValue(StripVersion(import.Name), out var impl))
                     WasmComponentException.Throw($"No host implementation provided for import '{import.Name}'.");
-                s.CompFuncs.Add(new ImportedComponentFunc(funcType, impl!));
+                s.CompFuncs.Add(new ImportedComponentFunc(funcType, impl!) { Name = import.Name });
                 break;
             }
             case TypeBoundDesc { IsEq: true } tb:
@@ -473,7 +478,7 @@ public sealed class ComponentLinker(WasmStore store)
             var impl = hostImportFuncs.TryGetValue(StripVersion(key), out var h)
                 ? h
                 : MissingImport(key);
-            result.Funcs[name] = new ImportedComponentFunc(inlined, impl);
+            result.Funcs[name] = new ImportedComponentFunc(inlined, impl) { Name = key };
         }
 
         return result;
@@ -510,6 +515,19 @@ public sealed class ComponentLinker(WasmStore store)
             arr[i] = rt;
         return arr;
     }
+
+    // Best-effort stringify of marshalled component values for DOTWASM_TRACE_CALLS.
+    static string Describe(object? v) => v switch
+    {
+        null => "null",
+        string s => $"\"{(s.Length > 60 ? s[..60] + "…" : s)}\"(len{s.Length})",
+        ResourceValue rv => $"res(rep={rv.Rep},own={rv.Owned})",
+        OptionValue o => o.HasValue ? $"some({Describe(o.Value)})" : "none",
+        ResultValue r => r.IsOk ? $"ok({Describe(r.Value)})" : $"err({Describe(r.Value)})",
+        VariantValue va => $"variant#{va.Case}({Describe(va.Payload)})",
+        object?[] arr => $"[{string.Join(",", arr.Select(Describe))}]",
+        _ => v.ToString() ?? "?",
+    };
 
     static Func<object?[], object?[]> MissingImport(string key) =>
         _ => throw new WasmComponentException($"No host implementation for imported function '{key}'. Use DefineImportFunc.");
@@ -732,7 +750,11 @@ public sealed class ComponentLinker(WasmStore store)
                 var paramIter = new CanonContext.CoreValueIter(argBits.GetRange(0, paramSlotCount));
                 var lifted = ctx.LiftFlatValues(paramIter, paramTypes, 16);
 
+                if (traceCalls)
+                    Console.Error.WriteLine($"[call] {(imported as ImportedComponentFunc)?.Name} args={Describe(lifted)}");
                 var hostResults = imported.CallHost(lifted);
+                if (traceCalls)
+                    Console.Error.WriteLine($"[call]   -> {Describe(hostResults)}");
 
                 if (resultsIndirect)
                 {
