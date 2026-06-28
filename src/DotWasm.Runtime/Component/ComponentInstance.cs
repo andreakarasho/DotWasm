@@ -89,7 +89,24 @@ public sealed class ComponentInstanceState
     ComponentTypeContext? typeContext;
 
     /// <summary>The finalized type context (built once instantiation is complete).</summary>
-    public ComponentTypeContext TypeContext => typeContext ??= BuildCurrent();
+    int typeContextTypeCount = -1;
+
+    /// <summary>The cached type context. Rebuilt when the type index space grows: a core
+    /// instance's start function can call a lowered import (which reads this) mid-instantiation,
+    /// before later definitions add the export function types — caching then would freeze a
+    /// short type space and make a later export flatten index out of range.</summary>
+    public ComponentTypeContext TypeContext
+    {
+        get
+        {
+            if (typeContext is null || typeContextTypeCount != Types.Count)
+            {
+                typeContext = BuildCurrent();
+                typeContextTypeCount = Types.Count;
+            }
+            return typeContext;
+        }
+    }
 
     /// <summary>Build a fresh type context from the types defined so far (mid-pass use).</summary>
     public ComponentTypeContext BuildCurrent()

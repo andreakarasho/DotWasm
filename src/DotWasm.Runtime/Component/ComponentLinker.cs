@@ -15,11 +15,24 @@ public sealed class ComponentLinker(WasmStore store)
     readonly Dictionary<string, Func<object?[], object?[]>> hostImportFuncs = [];
 
     /// <summary>Provide a host implementation for a top-level function import, keyed by import name.</summary>
-    public void DefineImport(string name, Func<object?[], object?[]> impl) => hostImports[name] = impl;
+    public void DefineImport(string name, Func<object?[], object?[]> impl) => hostImports[StripVersion(name)] = impl;
 
     /// <summary>Provide a host implementation for a function of an imported interface (instance import).</summary>
     public void DefineImportFunc(string interfaceName, string funcName, Func<object?[], object?[]> impl) =>
-        hostImportFuncs[$"{interfaceName}#{funcName}"] = impl;
+        hostImportFuncs[StripVersion($"{interfaceName}#{funcName}")] = impl;
+
+    // Drop the interface's `@semver` so imports resolve version-agnostically: a host impl
+    // registered for `wasi:clocks/monotonic-clock` (any version) satisfies a guest importing
+    // `wasi:clocks/monotonic-clock@0.2.10`. Strips the first `@...` up to `#` (or end).
+    // ponytail: no per-version override — a single impl covers all 0.2.x; add a versioned
+    // map only if two ABIs of one interface must coexist.
+    static string StripVersion(string key)
+    {
+        var at = key.IndexOf('@');
+        if (at < 0) return key;
+        var hash = key.IndexOf('#', at);
+        return hash < 0 ? key[..at] : key[..at] + key[hash..];
+    }
 
     public ComponentInstance Instantiate(ModelComponent component)
     {
@@ -336,7 +349,7 @@ public sealed class ComponentLinker(WasmStore store)
             {
                 var funcType = (s.Types[(int)fd.TypeIndex] as TypeFuncDef)?.Type
                     ?? throw new WasmComponentException("Imported func type is not a function type.");
-                if (!hostImports.TryGetValue(import.Name, out var impl))
+                if (!hostImports.TryGetValue(StripVersion(import.Name), out var impl))
                     WasmComponentException.Throw($"No host implementation provided for import '{import.Name}'.");
                 s.CompFuncs.Add(new ImportedComponentFunc(funcType, impl!));
                 break;
@@ -457,7 +470,7 @@ public sealed class ComponentLinker(WasmStore store)
                 ?? throw new WasmComponentException($"Import '{interfaceName}' func '{name}' has no func type.");
             var inlined = InlineFunc(ft, localCtx, ResMap);
             var key = $"{interfaceName}#{name}";
-            var impl = hostImportFuncs.TryGetValue(key, out var h)
+            var impl = hostImportFuncs.TryGetValue(StripVersion(key), out var h)
                 ? h
                 : MissingImport(key);
             result.Funcs[name] = new ImportedComponentFunc(inlined, impl);

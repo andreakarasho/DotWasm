@@ -81,6 +81,7 @@ static class Tests
         try { CrossInterfaceResource(); } catch (Exception e) { Check("cross-interface resource (threw)", false, e.ToString()); }
         try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
         try { ExportMintedHostResource(); } catch (Exception e) { Check("export-minted host resource (threw)", false, e.ToString()); }
+        try { TypeContextCacheGrowth(); } catch (Exception e) { Check("type-context cache growth (threw)", false, e.ToString()); }
         try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
         try { Wasi(); } catch (Exception e) { Check("wasi (threw)", false, e.ToString()); }
         try { Allocations(); } catch (Exception e) { Check("allocations (threw)", false, e.ToString()); }
@@ -315,6 +316,22 @@ static class Tests
         Check("resmint add-systems got 1 system borrow", gotSystems == 1, $"count={gotSystems}");
     }
 
+    static void TypeContextCacheGrowth()
+    {
+        // Regression: a core start function can read TypeContext mid-instantiation, before later
+        // defs add the export func types. The cache must rebuild when the type space grows, else
+        // a later export-signature flatten indexes out of range (real components: csharp ecs-mod).
+        Console.WriteLine("[unit: TypeContext cache invalidates on type-space growth]");
+        var s = new ComponentInstanceState();
+        s.Types.Add(new TypeValDef(new PrimitiveType(PrimitiveValType.S32))); // type #0
+        var first = s.TypeContext;                                            // freeze with 1 type
+        s.Types.Add(new TypeValDef(new PrimitiveType(PrimitiveValType.S32))); // type #1 added later
+        var second = s.TypeContext;
+        Check("cache rebuilt after type-space growth", !ReferenceEquals(first, second));
+        // flatten a ref to the newly-added index — was IndexOutOfRange against the stale cache
+        Check("flatten ref to grown index ok", second.FlattenType(new DefinedTypeRef(1)).Count == 1);
+    }
+
     static void TypedBindings()
     {
         Console.WriteLine("[ops.wasm  (generated typed bindings)]");
@@ -355,7 +372,9 @@ static class Tests
         var errBuf = new StringWriter();
         shim.Stdout = outBuf;
         shim.Stderr = errBuf;
-        shim.Register(linker);
+        // Register at a version that does NOT match the guest's imports (@0.2.3) to prove
+        // imports resolve version-agnostically (strips the interface `@semver`).
+        shim.Register(linker, "9.9.9");
 
         var inst = linker.Instantiate(component);
         // run() prints to stdout/stderr (WASI streams) and returns the wall-clock unix seconds.
