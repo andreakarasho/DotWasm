@@ -76,8 +76,9 @@ public sealed class CSharpEmitter
 
     void EmitRecord(WitRecord r)
     {
+        // A WIT record is a value aggregate -> a value type (no heap allocation per instance).
         var fields = string.Join(", ", r.Fields.Select(f => $"{CsType(f.Type)} {Pascal(f.Field)}"));
-        sb.AppendLine($"public sealed record {Pascal(r.Name)}({fields});");
+        sb.AppendLine($"public readonly record struct {Pascal(r.Name)}({fields});");
         sb.AppendLine();
     }
 
@@ -800,7 +801,8 @@ public sealed class CSharpEmitter
         {
             WitPrim p => p.Kind == "string",
             WitList or WitOption or WitHandle => true,
-            WitNamed n => typeDefs.TryGetValue(n.Name, out var d) && d is WitRecord or WitVariant or WitResourceDef,
+            // records are value types (record struct); only variants and resources are ref types
+            WitNamed n => typeDefs.TryGetValue(n.Name, out var d) && d is WitVariant or WitResourceDef,
             _ => false,
         };
     }

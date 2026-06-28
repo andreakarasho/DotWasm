@@ -15,7 +15,7 @@ public readonly record struct Result<TOk, TErr>(bool IsOk, TOk? Ok, TErr? Err)
     public static Result<TOk, TErr> Error(TErr e) => new(false, default, e);
 }
 
-public sealed record Point(int X, int Y);
+public readonly record struct Point(int X, int Y);
 
 public abstract record Shape
 {
