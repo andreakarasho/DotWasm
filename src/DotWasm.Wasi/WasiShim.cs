@@ -15,10 +15,11 @@ public sealed class WasiExitException(bool failure) : Exception($"WASI exit (fai
 /// clocks, random, environment and exit. Register on a <see cref="ComponentLinker"/> before
 /// instantiating a component built against the default (wasm32-wasip2) toolchain.
 ///
-/// Implemented: cli/stdout, cli/stderr (via io/streams output-stream), clocks/wall-clock,
-/// clocks/monotonic-clock, random/random + insecure, cli/environment, cli/exit.
-/// Other WASI interfaces a component may import (io/error, io/poll, cli/stdin, filesystem,
-/// sockets) are left unimplemented and only fault if actually called.
+/// Implemented: cli/stdout, cli/stderr (via io/streams output-stream), io/poll (always ready),
+/// cli/stdin, cli/terminal-* (not a TTY -> none), clocks/wall-clock, clocks/monotonic-clock,
+/// random/random + insecure, cli/environment, cli/exit.
+/// Other WASI interfaces a component may import (io/error, filesystem, sockets) are left
+/// unimplemented and only fault if actually called.
 /// </summary>
 public sealed class WasiShim
 {
@@ -33,6 +34,7 @@ public sealed class WasiShim
     // output-stream resource reps -> which fd (1 = stdout, 2 = stderr).
     readonly Dictionary<int, int> streams = new();
     int nextStreamRep = 1;
+    int nextPollableRep = 1;
 
     readonly long startTicks = Stopwatch.GetTimestamp();
 
@@ -53,6 +55,27 @@ public sealed class WasiShim
         linker.DefineImportFunc(s, "[method]output-stream.blocking-write-and-flush", a => { WriteStream(a); return [ResultValue.Ok()]; });
         linker.DefineImportFunc(s, "[method]output-stream.flush", _ => [ResultValue.Ok()]);
         linker.DefineImportFunc(s, "[method]output-stream.blocking-flush", _ => [ResultValue.Ok()]);
+        // subscribe -> pollable. The host is synchronous, so the stream is always ready.
+        linker.DefineImportFunc(s, "[method]output-stream.subscribe", _ => [NewPollable()]);
+        linker.DefineImportFunc(s, "[method]input-stream.subscribe", _ => [NewPollable()]);
+
+        // --- io/poll: every pollable is ready immediately (no real async) ---
+        var poll = I("io/poll");
+        linker.DefineImportFunc(poll, "[method]pollable.ready", _ => [true]);
+        linker.DefineImportFunc(poll, "[method]pollable.block", _ => []); // ready now: return at once
+        linker.DefineImportFunc(poll, "poll", a =>
+        {
+            // poll(list<borrow<pollable>>) -> list<u32>: all are ready, so return every index.
+            var inList = (object?[])a[0]!;
+            var ready = new object?[inList.Length];
+            for (var i = 0; i < inList.Length; i++) ready[i] = (uint)i;
+            return [ready];
+        });
+
+        // --- cli/terminal-*: not a TTY -> none (resources never minted) ---
+        linker.DefineImportFunc(I("cli/terminal-stdin"), "get-terminal-stdin", _ => [OptionValue.None]);
+        linker.DefineImportFunc(I("cli/terminal-stdout"), "get-terminal-stdout", _ => [OptionValue.None]);
+        linker.DefineImportFunc(I("cli/terminal-stderr"), "get-terminal-stderr", _ => [OptionValue.None]);
 
         // --- cli/stdin (init grabs it even if unused); input-stream reads return EOF ---
         linker.DefineImportFunc(I("cli/stdin"), "get-stdin", _ => [NewStream(0)]);
@@ -101,6 +124,9 @@ public sealed class WasiShim
         streams[rep] = fd;
         return rep; // own<output-stream> as a raw rep (wrapped with identity by the ABI)
     }
+
+    // own<pollable> as a raw rep; identity is irrelevant since every pollable is always ready.
+    object NewPollable() => nextPollableRep++;
 
     void WriteStream(object?[] a)
     {
