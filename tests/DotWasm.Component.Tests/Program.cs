@@ -280,8 +280,8 @@ static class Tests
         Check("typed AddPoint -> (12,23)", p is { X: 12, Y: 23 }, $"{p}");
         CheckEq("typed SumList == 10", 10, ops.SumList([1, 2, 3, 4]));
         Check("typed MakeList(3)", ops.MakeList(3).SequenceEqual([0u, 1u, 2u]));
-        CheckEq("typed Describe(Circle 2.5)", "circle 2.5", ops.Describe(new Gen.Shape.Circle(2.5)));
-        CheckEq("typed Describe(Rect)", "rect 1 2", ops.Describe(new Gen.Shape.Rect(new Gen.Point(1, 2))));
+        CheckEq("typed Describe(Circle 2.5)", "circle 2.5", ops.Describe(new Gen.ShapeCircle(2.5)));
+        CheckEq("typed Describe(Rect)", "rect 1 2", ops.Describe(new Gen.ShapeRect(new Gen.Point(1, 2))));
 
         var ok = ops.Divide(10, 2);
         Check("typed Divide ok", ok is { IsOk: true, Ok: 5 }, $"{ok}");

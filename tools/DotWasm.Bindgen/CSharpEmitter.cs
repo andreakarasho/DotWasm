@@ -30,8 +30,25 @@ public sealed class CSharpEmitter
         sb.AppendLine("using DotWasm.Runtime;");
         sb.AppendLine("using DotWasm.Runtime.Component;");
         sb.AppendLine();
-        sb.AppendLine($"namespace {ns};");
-        sb.AppendLine();
+
+        // Variants use the .NET 11 `union` feature; polyfill its attributes for downlevel TFMs.
+        if (typeDefs.Values.Any(t => t is WitVariant))
+        {
+            sb.AppendLine("""
+            #if !NET11_0_OR_GREATER
+            namespace System.Runtime.CompilerServices
+            {
+                [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]
+                internal sealed class UnionAttribute : Attribute;
+                internal interface IUnion { object? Value { get; } }
+            }
+            #endif
+            """);
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"namespace {ns}");
+        sb.AppendLine("{");
 
         EmitSupport();
 
@@ -52,6 +69,8 @@ public sealed class CSharpEmitter
             EmitInterface(iface);
 
         EmitRawListHelpers();
+
+        sb.AppendLine("}");
 
         return sb.ToString();
     }
@@ -84,14 +103,18 @@ public sealed class CSharpEmitter
 
     void EmitVariant(WitVariant v)
     {
-        var baseName = Pascal(v.Name);
-        sb.AppendLine($"public abstract record {baseName}");
-        sb.AppendLine("{");
-        foreach (var (c, t) in v.Cases)
+        // .NET 11 union: a value-type discriminated union over per-case types.
+        var name = Pascal(v.Name);
+        var caseNames = v.Cases.Select(c => name + Pascal(c.Case)).ToList();
+        sb.AppendLine($"public union {name}({string.Join(", ", caseNames)});");
+        for (var i = 0; i < v.Cases.Count; i++)
+        {
+            var (c, t) = v.Cases[i];
+            var cn = name + Pascal(c);
             sb.AppendLine(t is null
-                ? $"    public sealed record {Pascal(c)}() : {baseName};"
-                : $"    public sealed record {Pascal(c)}({CsType(t)} Value) : {baseName};");
-        sb.AppendLine("}");
+                ? $"public readonly record struct {cn};"
+                : $"public readonly record struct {cn}({CsType(t)} Value);");
+        }
         sb.AppendLine();
     }
 
@@ -168,8 +191,10 @@ public sealed class CSharpEmitter
         for (var i = 0; i < v.Cases.Count; i++)
         {
             var (c, t) = v.Cases[i];
-            var payload = t is null ? "null" : Lower("c.Value", t);
-            sb.AppendLine($"        {name}.{Pascal(c)} c => new VariantValue({i}, {payload}),");
+            var cn = name + Pascal(c);
+            sb.AppendLine(t is null
+                ? $"        {cn} => new VariantValue({i}, null),"
+                : $"        {cn} __c => new VariantValue({i}, {Lower("__c.Value", t)}),");
         }
         sb.AppendLine("        _ => throw new ArgumentException(\"bad variant\"),");
         sb.AppendLine("    };");
@@ -178,8 +203,9 @@ public sealed class CSharpEmitter
         for (var i = 0; i < v.Cases.Count; i++)
         {
             var (c, t) = v.Cases[i];
+            var cn = name + Pascal(c);
             var arg = t is null ? "" : Lift("vv.Payload", t);
-            sb.AppendLine($"        {i} => new {name}.{Pascal(c)}({arg}),");
+            sb.AppendLine($"        {i} => ({name})new {cn}({arg}),");
         }
         sb.AppendLine("        _ => throw new ArgumentException(\"bad variant case\"),");
         sb.AppendLine("    }; }");
@@ -801,8 +827,8 @@ public sealed class CSharpEmitter
         {
             WitPrim p => p.Kind == "string",
             WitList or WitOption or WitHandle => true,
-            // records are value types (record struct); only variants and resources are ref types
-            WitNamed n => typeDefs.TryGetValue(n.Name, out var d) && d is WitVariant or WitResourceDef,
+            // records and variants are value types (record struct / union); only resources are ref
+            WitNamed n => typeDefs.TryGetValue(n.Name, out var d) && d is WitResourceDef,
             _ => false,
         };
     }

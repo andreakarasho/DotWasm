@@ -5,8 +5,17 @@ using System.Buffers;
 using DotWasm.Runtime;
 using DotWasm.Runtime.Component;
 
-namespace Ops.Generated;
+#if !NET11_0_OR_GREATER
+namespace System.Runtime.CompilerServices
+{
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]
+    internal sealed class UnionAttribute : Attribute;
+    internal interface IUnion { object? Value { get; } }
+}
+#endif
 
+namespace Ops.Generated
+{
 public readonly struct Unit { public static readonly Unit Value = default; }
 
 public readonly record struct Result<TOk, TErr>(bool IsOk, TOk? Ok, TErr? Err)
@@ -17,12 +26,10 @@ public readonly record struct Result<TOk, TErr>(bool IsOk, TOk? Ok, TErr? Err)
 
 public readonly record struct Point(int X, int Y);
 
-public abstract record Shape
-{
-    public sealed record Circle(double Value) : Shape;
-    public sealed record Rect(Point Value) : Shape;
-    public sealed record Unit() : Shape;
-}
+public union Shape(ShapeCircle, ShapeRect, ShapeUnit);
+public readonly record struct ShapeCircle(double Value);
+public readonly record struct ShapeRect(Point Value);
+public readonly record struct ShapeUnit;
 
 public enum Color { Red, Green, Blue }
 
@@ -52,16 +59,16 @@ internal static class Marshal
     public static Point LiftPoint(object? v) { var a = (object?[])v!; return new Point((int)a[0]!, (int)a[1]!); }
     public static object? LowerShape(Shape v) => v switch
     {
-        Shape.Circle c => new VariantValue(0, c.Value),
-        Shape.Rect c => new VariantValue(1, Marshal.LowerPoint(c.Value)),
-        Shape.Unit c => new VariantValue(2, null),
+        ShapeCircle __c => new VariantValue(0, __c.Value),
+        ShapeRect __c => new VariantValue(1, Marshal.LowerPoint(__c.Value)),
+        ShapeUnit => new VariantValue(2, null),
         _ => throw new ArgumentException("bad variant"),
     };
     public static Shape LiftShape(object? v) { var vv = (VariantValue)v!; return (int)vv.Case switch
     {
-        0 => new Shape.Circle((double)vv.Payload!),
-        1 => new Shape.Rect(Marshal.LiftPoint(vv.Payload)),
-        2 => new Shape.Unit(),
+        0 => (Shape)new ShapeCircle((double)vv.Payload!),
+        1 => (Shape)new ShapeRect(Marshal.LiftPoint(vv.Payload)),
+        2 => (Shape)new ShapeUnit(),
         _ => throw new ArgumentException("bad variant case"),
     }; }
     public static object? LowerColor(Color v) => (uint)v;
@@ -411,3 +418,4 @@ internal static class RawList
     }
 }
 
+}
