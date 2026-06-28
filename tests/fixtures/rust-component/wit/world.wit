@@ -1,0 +1,32 @@
+package test:comp;
+
+interface ops {
+  record point { x: s32, y: s32 }
+  variant shape { circle(f64), rect(point), unit }
+  enum color { red, green, blue }
+  flags perms { read, write, exec }
+
+  add-point: func(a: point, b: point) -> point;
+  sum-list: func(xs: list<s32>) -> s32;
+  make-list: func(n: u32) -> list<u32>;
+  describe: func(s: shape) -> string;
+  divide: func(a: s32, b: s32) -> result<s32, string>;
+  maybe-inc: func(x: option<s32>) -> option<s32>;
+  next-color: func(c: color) -> color;
+  perm-bits: func(p: perms) -> u32;
+  swap: func(t: tuple<s32, f64>) -> tuple<f64, s32>;
+
+  big-sum: func(a: s32, b: s32, c: s32, d: s32, e: s32, f: s32, g: s32, h: s32, i: s32, j: s32, k: s32, l: s32, m: s32, n: s32, o: s32, p: s32, q: s32) -> s32;
+  f32-add: func(a: f32, b: f32) -> f32;
+  u64-add: func(a: u64, b: u64) -> u64;
+
+  resource counter {
+    constructor(init: s32);
+    increment: func() -> s32;
+    get: func() -> s32;
+  }
+}
+
+world comp {
+  export ops;
+}
