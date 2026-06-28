@@ -22,6 +22,11 @@ public sealed class ResourceTypeIdentity
 
     /// <summary>The instance that defines this resource (owns its rep + table semantics).</summary>
     public object? ImplementingInstance { get; set; }
+
+    /// <summary>For a host-implemented (imported) resource: the host's drop handler, invoked
+    /// when the guest drops an owned handle so the host can free its rep-keyed state. Set from a
+    /// <c>"iface#[resource-drop]name"</c> import registered via DefineImportFunc.</summary>
+    public Func<object?[], object?[]>? HostDrop { get; set; }
 }
 
 /// <summary>

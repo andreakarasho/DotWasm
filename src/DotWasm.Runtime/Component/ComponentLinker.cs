@@ -467,7 +467,15 @@ public sealed class ComponentLinker(WasmStore store)
             result.Types[name] = Inline(new DefinedTypeRef((uint)idx), localCtx, ResMap);
 
         foreach (var (name, idx) in resourceExportName)
-            result.Resources[name] = localResources[idx];
+        {
+            var rt = localResources[idx];
+            result.Resources[name] = rt;
+            // Wire an optional host drop handler ("iface#[resource-drop]name") so the host is
+            // told when the guest drops an owned handle of this resource — lets it free its
+            // rep-keyed state on drop instead of guessing (e.g. trimming) per call.
+            if (hostImportFuncs.TryGetValue(StripVersion($"{interfaceName}#[resource-drop]{name}"), out var drop))
+                rt.HostDrop = drop;
+        }
 
         foreach (var (name, funcTypeIdx) in funcExportIndex)
         {
@@ -827,6 +835,10 @@ public sealed class ComponentLinker(WasmStore store)
                 var dtor = s.ResolveModuleFunc((int)dtorIndex);
                 dtor.Invoke([WasmValue.FromI32(h.Rep)], Span<WasmValue>.Empty);
             }
+            // Host-implemented resource: notify the host so it can free its rep-keyed state.
+            // Only own handles carry ownership; a dropped borrow doesn't free host state.
+            if (h.Own)
+                rt.HostDrop?.Invoke([new ResourceValue(h.Rep, Owned: true, rt)]);
         },
     };
 

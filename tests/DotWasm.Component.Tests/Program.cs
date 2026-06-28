@@ -83,6 +83,7 @@ static class Tests
         try { ExportMintedHostResource(); } catch (Exception e) { Check("export-minted host resource (threw)", false, e.ToString()); }
         try { TypeContextCacheGrowth(); } catch (Exception e) { Check("type-context cache growth (threw)", false, e.ToString()); }
         try { HostMethodReturnsResource(); } catch (Exception e) { Check("host method returns resource (threw)", false, e.ToString()); }
+        try { HostResourceDropCallback(); } catch (Exception e) { Check("host resource drop callback (threw)", false, e.ToString()); }
         try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
         try { Wasi(); } catch (Exception e) { Check("wasi (threw)", false, e.ToString()); }
         try { Allocations(); } catch (Exception e) { Check("allocations (threw)", false, e.ToString()); }
@@ -345,6 +346,35 @@ static class Tests
         var inst = linker.Instantiate(ComponentEncoding.Decode(File.ReadAllBytes(path)));
         // run() = make(100).value() + next(10) + next(20) = 130
         CheckEq("resret run() == 130", 130, inst.Invoke("run")[0]);
+    }
+
+    static void HostResourceDropCallback()
+    {
+        // Real ecs-ui failure: the guest holds a host resource handle across calls (idToHandle).
+        // A host that frees its rep-keyed state per call breaks reuse. With a [resource-drop]
+        // handler, the host frees exactly on the guest's drop — no per-call trimming needed.
+        Console.WriteLine("[hold.wasm  (host resource handle held across calls + drop callback)]");
+        var path = Path.Combine(FixturesDir(), "hold.wasm");
+        var linker = new ComponentLinker(new WasmStore());
+        var st = "test:hold/store";
+        var handles = new Dictionary<int, int>();
+        var next = 1;
+        var dropped = new List<int>();
+        linker.DefineImportFunc(st, "make", a => { var r = next++; handles[r] = (int)a[0]!; return [r]; });
+        linker.DefineImportFunc(st, "[method]node.label", a => [handles[((ResourceValue)a[0]!).Rep]]);
+        linker.DefineImportFunc(st, "[resource-drop]node", a =>
+        {
+            var rep = ((ResourceValue)a[0]!).Rep;
+            dropped.Add(rep); handles.Remove(rep); return [];
+        });
+
+        var inst = linker.Instantiate(ComponentEncoding.Decode(File.ReadAllBytes(path)));
+        inst.Invoke("create");                                  // guest mints + holds node (rep 1)
+        CheckEq("hold reuse() across calls == 42", 42, inst.Invoke("reuse")[0]); // handle survives
+        Check("hold: not dropped yet", dropped.Count == 0);
+        inst.Invoke("release");                                 // guest drops the held node
+        Check("hold: drop callback fired for rep 1", dropped is [1]);
+        Check("hold: host state freed on drop", handles.Count == 0);
     }
 
     static void TypeContextCacheGrowth()
