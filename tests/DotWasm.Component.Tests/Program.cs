@@ -82,6 +82,7 @@ static class Tests
         try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
         try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
         try { Wasi(); } catch (Exception e) { Check("wasi (threw)", false, e.ToString()); }
+        try { Allocations(); } catch (Exception e) { Check("allocations (threw)", false, e.ToString()); }
 
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         return failed == 0 ? 0 : 1;
@@ -320,6 +321,30 @@ static class Tests
         Check("wasi stderr captured", errBuf.ToString().Contains("hello from wasi stderr"), $"err=[{errBuf}]");
         var nowRef = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Check("wasi wall-clock plausible", now > 1_700_000_000UL && now <= nowRef + 5, $"now={now}");
+    }
+
+    static void Allocations()
+    {
+        Console.WriteLine("[ops.wasm  (allocation: zero-box typed vs dynamic)]");
+        var ops = new Gen.Ops(Instantiate("ops.wasm"));
+        var dyn = Ops();
+
+        // warm up both paths (JIT + ArrayPool buckets)
+        for (var i = 0; i < 500; i++) { ops.NextColor(Gen.Color.Red); dyn.Invoke("next-color", 0u); }
+
+        const int N = 5000;
+        var b0 = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < N; i++) ops.NextColor(Gen.Color.Red);   // pure-register zero-box call
+        var typed = GC.GetAllocatedBytesForCurrentThread() - b0;
+
+        var b1 = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < N; i++) dyn.Invoke("next-color", 0u);   // dynamic object?[] path
+        var dynamic = GC.GetAllocatedBytesForCurrentThread() - b1;
+
+        // The typed path's per-call allocation is fixed interpreter/pool overhead (no boxing);
+        // the dynamic path additionally boxes args/results into object?[] every call.
+        Check($"typed low/bounded alloc ({typed / (double)N:F0} B/call)", typed / N < 256);
+        Check($"dynamic allocates >=4x typed ({dynamic / (double)N:F0} vs {typed / (double)N:F0} B/call)", dynamic > typed * 4);
     }
 }
 

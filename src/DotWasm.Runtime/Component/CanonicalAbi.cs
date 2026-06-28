@@ -67,6 +67,59 @@ public sealed class CanonContext
             mem[ptr + i] = (byte)(bits >> (8 * i));
     }
 
+    // ===== public raw typed surface (used by generated zero-box bindings) =====
+
+    public int Allocate(int size, int align) => CallRealloc(0, 0, align, size);
+
+    public bool LoadBool(int p) => LoadIntUnsigned(Mem, p, 1) != 0;
+    public sbyte LoadS8(int p) => (sbyte)(byte)LoadIntUnsigned(Mem, p, 1);
+    public byte LoadU8(int p) => (byte)LoadIntUnsigned(Mem, p, 1);
+    public short LoadS16(int p) => (short)(ushort)LoadIntUnsigned(Mem, p, 2);
+    public ushort LoadU16(int p) => (ushort)LoadIntUnsigned(Mem, p, 2);
+    public int LoadS32(int p) => (int)(uint)LoadIntUnsigned(Mem, p, 4);
+    public uint LoadU32(int p) => (uint)LoadIntUnsigned(Mem, p, 4);
+    public long LoadS64(int p) => (long)LoadIntUnsigned(Mem, p, 8);
+    public ulong LoadU64(int p) => LoadIntUnsigned(Mem, p, 8);
+    public float LoadF32(int p) => CanonF32(BitConverter.Int32BitsToSingle((int)(uint)LoadIntUnsigned(Mem, p, 4)));
+    public double LoadF64(int p) => CanonF64(BitConverter.Int64BitsToDouble((long)LoadIntUnsigned(Mem, p, 8)));
+    public int LoadChar(int p) => ConvertI32ToChar((uint)LoadIntUnsigned(Mem, p, 4));
+    public string LoadStringAt(int p) =>
+        LoadStringFromRange((int)LoadIntUnsigned(Mem, p, 4), (int)LoadIntUnsigned(Mem, p + 4, 4));
+
+    public void StoreBool(int p, bool v) => StoreIntBits(Mem, p, 1, v ? 1u : 0u);
+    public void StoreS8(int p, sbyte v) => StoreIntBits(Mem, p, 1, (byte)v);
+    public void StoreU8(int p, byte v) => StoreIntBits(Mem, p, 1, v);
+    public void StoreS16(int p, short v) => StoreIntBits(Mem, p, 2, (ushort)v);
+    public void StoreU16(int p, ushort v) => StoreIntBits(Mem, p, 2, v);
+    public void StoreS32(int p, int v) => StoreIntBits(Mem, p, 4, (uint)v);
+    public void StoreU32(int p, uint v) => StoreIntBits(Mem, p, 4, v);
+    public void StoreS64(int p, long v) => StoreIntBits(Mem, p, 8, (ulong)v);
+    public void StoreU64(int p, ulong v) => StoreIntBits(Mem, p, 8, v);
+    public void StoreF32(int p, float v) => StoreIntBits(Mem, p, 4, (uint)BitConverter.SingleToInt32Bits(v));
+    public void StoreF64(int p, double v) => StoreIntBits(Mem, p, 8, (ulong)BitConverter.DoubleToInt64Bits(v));
+    public void StoreChar(int p, int v) => StoreIntBits(Mem, p, 4, CharToI32(v));
+    public void StoreStringAt(int p, string v) => StoreString(v, p);
+
+    /// <summary>Stores a string's bytes via realloc; returns (ptr, taggedCodeUnits) for a flat string.</summary>
+    public (int Ptr, int CodeUnits) StoreStringRange(string v) => StoreStringIntoRange(v);
+
+    /// <summary>Reconstructs a string from a flat (ptr, codeUnits) pair.</summary>
+    public string LiftStringRange(int ptr, int codeUnits) => LoadStringFromRange(ptr, codeUnits);
+
+    /// <summary>Settle borrows lent during a call (decrement lend counters).</summary>
+    public void SettleBorrows()
+    {
+        foreach (var lender in BorrowLenders)
+            lender.NumLends--;
+        BorrowLenders.Clear();
+    }
+
+    // resource handle lower/lift exposed for generated code
+    public int LowerOwnHandle(object? v, uint typeIndex) => LowerOwn(v, typeIndex);
+    public int LowerBorrowHandle(object? v, uint typeIndex) => LowerBorrow(v, typeIndex);
+    public object LiftOwnHandle(int i, uint typeIndex) => LiftOwn(i, typeIndex);
+    public object LiftBorrowHandle(int i, uint typeIndex) => LiftBorrow(i, typeIndex);
+
     // ================= store (value -> memory) =================
 
     public void Store(object? v, ComponentValType type, int ptr)
@@ -177,34 +230,80 @@ public sealed class CanonContext
 
     void StoreList(object? v, ListType l, int ptr)
     {
-        var items = (object?[])v!;
         if (l.FixedLength is { } n)
         {
-            if (items.Length != (int)n)
+            if (((Array)v!).Length != (int)n)
                 WasmTrapException.Throw("Fixed-length list value has wrong length.");
-            StoreListElems(items, l.Element, ptr);
+            StoreListElems(v!, l.Element, ptr);
             return;
         }
-        var (begin, length) = StoreListIntoRange(items, l.Element);
+        var (begin, length) = StoreListIntoRange(v!, l.Element);
         var mem = Mem;
         StoreIntBits(mem, ptr, 4, (uint)begin);
         StoreIntBits(mem, ptr + 4, 4, (uint)length);
     }
 
-    (int ptr, int length) StoreListIntoRange(object?[] items, ComponentValType elem)
+    (int ptr, int length) StoreListIntoRange(object v, ComponentValType elem)
     {
+        var count = ((Array)v).Length;
         var elemSize = Types.ElemSize(elem);
-        var byteLength = items.Length * elemSize;
-        var ptr = CallRealloc(0, 0, Types.Alignment(elem), byteLength);
-        StoreListElems(items, elem, ptr);
-        return (ptr, items.Length);
+        var ptr = CallRealloc(0, 0, Types.Alignment(elem), count * elemSize);
+        StoreListElems(v, elem, ptr);
+        return (ptr, count);
     }
 
-    void StoreListElems(object?[] items, ComponentValType elem, int ptr)
+    void StoreListElems(object v, ComponentValType elem, int ptr)
     {
+        // Fast path: a typed primitive array (e.g. int[], byte[]) stores without per-element boxing.
+        if (Types.Structural(elem) is PrimitiveType p && TryStoreTypedArray(v, p.Kind, ptr))
+            return;
+        var items = (object?[])v;
         var elemSize = Types.ElemSize(elem);
         for (var i = 0; i < items.Length; i++)
             Store(items[i], elem, ptr + i * elemSize);
+    }
+
+    bool TryStoreTypedArray(object v, PrimitiveValType k, int basePtr)
+    {
+        var mem = Mem;
+        switch (k)
+        {
+            case PrimitiveValType.S32 when v is int[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 4, 4, (uint)a[i]);
+                return true;
+            case PrimitiveValType.U32 when v is uint[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 4, 4, a[i]);
+                return true;
+            case PrimitiveValType.U8 when v is byte[] a:
+                a.CopyTo(mem[basePtr..]);
+                return true;
+            case PrimitiveValType.S8 when v is sbyte[] a:
+                for (var i = 0; i < a.Length; i++) mem[basePtr + i] = (byte)a[i];
+                return true;
+            case PrimitiveValType.S16 when v is short[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 2, 2, (ushort)a[i]);
+                return true;
+            case PrimitiveValType.U16 when v is ushort[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 2, 2, a[i]);
+                return true;
+            case PrimitiveValType.S64 when v is long[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 8, 8, (ulong)a[i]);
+                return true;
+            case PrimitiveValType.U64 when v is ulong[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 8, 8, a[i]);
+                return true;
+            case PrimitiveValType.F32 when v is float[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 4, 4, (uint)BitConverter.SingleToInt32Bits(a[i]));
+                return true;
+            case PrimitiveValType.F64 when v is double[] a:
+                for (var i = 0; i < a.Length; i++) StoreIntBits(mem, basePtr + i * 8, 8, (ulong)BitConverter.DoubleToInt64Bits(a[i]));
+                return true;
+            case PrimitiveValType.Bool when v is bool[] a:
+                for (var i = 0; i < a.Length; i++) mem[basePtr + i] = a[i] ? (byte)1 : (byte)0;
+                return true;
+            default:
+                return false;
+        }
     }
 
     void StoreRecord(object?[] values, RecordType rec, int ptr)
@@ -414,16 +513,16 @@ public sealed class CanonContext
 
     void LowerFlatList(object? v, ListType l, List<ulong> o)
     {
-        var items = (object?[])v!;
         if (l.FixedLength is { } n)
         {
+            var items = (object?[])v!;
             if (items.Length != (int)n)
                 WasmTrapException.Throw("Fixed-length list value has wrong length.");
             foreach (var e in items)
                 LowerFlat(e, l.Element, o);
             return;
         }
-        var (ptr, length) = StoreListIntoRange(items, l.Element);
+        var (ptr, length) = StoreListIntoRange(v!, l.Element);
         o.Add((uint)ptr);
         o.Add((uint)length);
     }

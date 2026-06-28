@@ -183,6 +183,23 @@ public sealed class ComponentFunc : IComponentCallable
 
     public ComponentFuncType Type => type;
 
+    // ---- raw zero-box surface (used by generated typed bindings) ----
+
+    /// <summary>Get the reusable lift/lower context bound to this function's memory/realloc/handles.</summary>
+    public CanonContext CreateContext() => Ctx();
+
+    /// <summary>Invoke the lifted core function with already-lowered flat core values.</summary>
+    public void CallCore(ReadOnlySpan<WasmValue> args, Span<WasmValue> results) =>
+        callee.Invoke(args, results);
+
+    /// <summary>After lifting results: run post-return (freeing callee allocations) and settle borrows.</summary>
+    public void Finish(CanonContext cx, ReadOnlySpan<WasmValue> coreResults)
+    {
+        cx.SettleBorrows();
+        if (postReturnIndex >= 0)
+            state.ResolveModuleFunc(postReturnIndex).Invoke(coreResults, Span<WasmValue>.Empty);
+    }
+
     public object?[] CallHost(object?[] args) => Call(args);
 
     void EnsurePrepared()
@@ -203,7 +220,7 @@ public sealed class ComponentFunc : IComponentCallable
                 $"Expected {paramTypes.Count} argument(s), got {args.Length}.");
 
         EnsurePrepared();
-        var ctx = NewContext();
+        var ctx = Ctx();
 
         var lowerBits = ctx.LowerFlatValues(args, paramTypes, 16);
         var coreArgs = CanonContext.BitsToCore(lowerBits, coreParamFlat!);
@@ -214,28 +231,32 @@ public sealed class ComponentFunc : IComponentCallable
         var resultBits = CanonContext.CoreToBits(coreResults, coreResultFlat!);
         var lifted = ctx.LiftFlatValues(new CanonContext.CoreValueIter(resultBits), resultTypes, 1);
 
-        // settle borrows lent during the call
-        foreach (var lender in ctx.BorrowLenders)
-            lender.NumLends--;
+        ctx.SettleBorrows();
 
         if (postReturnIndex >= 0)
-        {
-            var postReturn = state.ResolveModuleFunc(postReturnIndex);
-            postReturn.Invoke(coreResults, Span<WasmValue>.Empty);
-        }
+            state.ResolveModuleFunc(postReturnIndex).Invoke(coreResults, Span<WasmValue>.Empty);
 
         return lifted;
     }
 
-    CanonContext NewContext() => new()
+    // One reusable context per function (component calls are single-threaded); BorrowLenders
+    // is cleared on each acquire. Keeps the zero-box typed path allocation-free per call.
+    CanonContext? ctx;
+
+    CanonContext Ctx()
     {
-        Types = state.TypeContext,
-        Memory = memoryIndex >= 0 ? state.ResolveMemory(memoryIndex) : null,
-        Realloc = reallocIndex >= 0 ? state.ResolveRealloc(reallocIndex) : null,
-        StringEncoding = stringEncoding,
-        Handles = state.Handles,
-        InstanceIdentity = state,
-    };
+        ctx ??= new()
+        {
+            Types = state.TypeContext,
+            Memory = memoryIndex >= 0 ? state.ResolveMemory(memoryIndex) : null,
+            Realloc = reallocIndex >= 0 ? state.ResolveRealloc(reallocIndex) : null,
+            StringEncoding = stringEncoding,
+            Handles = state.Handles,
+            InstanceIdentity = state,
+        };
+        ctx.BorrowLenders.Clear();
+        return ctx;
+    }
 }
 
 /// <summary>
