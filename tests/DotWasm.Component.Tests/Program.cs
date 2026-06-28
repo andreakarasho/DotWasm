@@ -2,6 +2,7 @@ using DotWasm.Encoding;
 using DotWasm.Models.Component;
 using DotWasm.Runtime;
 using DotWasm.Runtime.Component;
+using Gen = Ops.Generated;
 
 // Modes:
 //   dump <file.wasm>   decode a component and print its definitions
@@ -79,6 +80,7 @@ static class Tests
         try { InterfaceImports(); } catch (Exception e) { Check("interface imports (threw)", false, e.ToString()); }
         try { CrossInterfaceResource(); } catch (Exception e) { Check("cross-interface resource (threw)", false, e.ToString()); }
         try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
+        try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
 
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         return failed == 0 ? 0 : 1;
@@ -265,6 +267,34 @@ static class Tests
         var inst = linker.Instantiate(component);
         // run() = bucket(10); add(5)=15; add(2)=17 -> 32
         CheckEq("run() == 32 (guest uses host-implemented resource)", 32, inst.Invoke("run")[0]);
+    }
+
+    static void TypedBindings()
+    {
+        Console.WriteLine("[ops.wasm  (generated typed bindings)]");
+        var ops = new Gen.Ops(Instantiate("ops.wasm"));
+
+        var p = ops.AddPoint(new Gen.Point(2, 3), new Gen.Point(10, 20));
+        Check("typed AddPoint -> (12,23)", p is { X: 12, Y: 23 }, $"{p}");
+        CheckEq("typed SumList == 10", 10, ops.SumList([1, 2, 3, 4]));
+        Check("typed MakeList(3)", ops.MakeList(3).SequenceEqual([0u, 1u, 2u]));
+        CheckEq("typed Describe(Circle 2.5)", "circle 2.5", ops.Describe(new Gen.Shape.Circle(2.5)));
+        CheckEq("typed Describe(Rect)", "rect 1 2", ops.Describe(new Gen.Shape.Rect(new Gen.Point(1, 2))));
+
+        var ok = ops.Divide(10, 2);
+        Check("typed Divide ok", ok is { IsOk: true, Ok: 5 }, $"{ok}");
+        var err = ops.Divide(1, 0);
+        Check("typed Divide err", err is { IsOk: false, Err: "div by zero" }, $"{err}");
+
+        CheckEq("typed MaybeInc(5) == 6", 6, ops.MaybeInc(5));
+        Check("typed MaybeInc(null) == null", ops.MaybeInc(null) is null);
+        CheckEq("typed NextColor(Red) == Green", Gen.Color.Green, ops.NextColor(Gen.Color.Red));
+        CheckEq("typed PermBits(Read|Write) == 3", 3u, ops.PermBits(Gen.Perms.Read | Gen.Perms.Write));
+        CheckEq("typed Swap((7,2.5)).Item1 == 2.5", 2.5, ops.Swap((7, 2.5)).Item1);
+
+        var counter = ops.NewCounter(10);
+        CheckEq("typed counter.Increment() == 11", 11, counter.Increment());
+        CheckEq("typed counter.Get() == 11", 11, counter.Get());
     }
 }
 

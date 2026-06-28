@@ -49,3 +49,26 @@ public sealed record ResultValue(bool IsOk, object? Value)
 /// representation. <see cref="Owned"/> distinguishes <c>own</c> from <c>borrow</c>.
 /// </summary>
 public sealed record ResourceValue(int Rep, bool Owned, ResourceTypeIdentity Type);
+
+/// <summary>Readability helpers for building component values. Records, tuples and lists
+/// are all <c>object?[]</c>; these just make intent clear at the call site.</summary>
+public static class Comp
+{
+    public static object?[] Record(params object?[] fields) => fields;
+
+    public static object?[] Tuple(params object?[] items) => items;
+
+    public static object?[] List(params object?[] items) => items;
+
+    public static VariantValue Variant(uint @case, object? payload = null) => new(@case, payload);
+
+    public static OptionValue Some(object? value) => OptionValue.Some(value);
+
+    public static OptionValue None => OptionValue.None;
+
+    public static ResultValue Ok(object? value = null) => ResultValue.Ok(value);
+
+    public static ResultValue Err(object? value = null) => ResultValue.Err(value);
+
+    public static FlagsValue Flags(params bool[] values) => new(values);
+}
