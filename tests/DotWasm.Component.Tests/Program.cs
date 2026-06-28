@@ -80,6 +80,7 @@ static class Tests
         try { InterfaceImports(); } catch (Exception e) { Check("interface imports (threw)", false, e.ToString()); }
         try { CrossInterfaceResource(); } catch (Exception e) { Check("cross-interface resource (threw)", false, e.ToString()); }
         try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
+        try { ExportMintedHostResource(); } catch (Exception e) { Check("export-minted host resource (threw)", false, e.ToString()); }
         try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
         try { Wasi(); } catch (Exception e) { Check("wasi (threw)", false, e.ToString()); }
         try { Allocations(); } catch (Exception e) { Check("allocations (threw)", false, e.ToString()); }
@@ -269,6 +270,49 @@ static class Tests
         var inst = linker.Instantiate(component);
         // run() = bucket(10); add(5)=15; add(2)=17 -> 32
         CheckEq("run() == 32 (guest uses host-implemented resource)", 32, inst.Invoke("run")[0]);
+    }
+
+    static void ExportMintedHostResource()
+    {
+        // Variant A: host MINTS an own<app> at the export-param site, guest calls a host
+        // method on it (self: borrow<app>). The export-param resource type and the method-self
+        // resource type must resolve to ONE identity, else borrow lift traps.
+        Console.WriteLine("[rmping.wasm  (export-minted host resource, self-borrow into host method)]");
+        var path = Path.Combine(FixturesDir(), "rmping.wasm");
+        var component = ComponentEncoding.Decode(File.ReadAllBytes(path));
+        var linker = new ComponentLinker(new WasmStore());
+
+        var pinged = false;
+        linker.DefineImportFunc("test:rmping/app", "[method]app.ping", a =>
+        {
+            var self = (ResourceValue)a[0]!; // borrow<app>
+            pinged = self.Rep == 100;
+            return [];
+        });
+
+        var inst = linker.Instantiate(component);
+        inst.Invoke("setup", 100); // 100 = own<app> rep, host-minted at the export param
+        Check("rmping setup pinged host app (rep 100)", pinged);
+
+        // Full shape: export-minted own<app> + a second host resource `system` minted by a host
+        // constructor, passed back as list<borrow<system>> into a host method on `app`.
+        Console.WriteLine("[resmint.wasm  (export-minted app + list<borrow<system>> into host method)]");
+        var path2 = Path.Combine(FixturesDir(), "resmint.wasm");
+        var linker2 = new ComponentLinker(new WasmStore());
+        var nextSys = 1;
+        var gotSelf = 0;
+        var gotSystems = -1;
+        linker2.DefineImportFunc("test:resmint/app", "[constructor]system", _ => [nextSys++]);
+        linker2.DefineImportFunc("test:resmint/app", "[method]app.add-systems", a =>
+        {
+            gotSelf = ((ResourceValue)a[0]!).Rep;          // borrow<app>
+            gotSystems = ((object?[])a[1]!).Length;        // list<borrow<system>>
+            return [];
+        });
+        var inst2 = linker2.Instantiate(ComponentEncoding.Decode(File.ReadAllBytes(path2)));
+        inst2.Invoke("setup", 100);
+        Check("resmint add-systems got self app (rep 100)", gotSelf == 100, $"self={gotSelf}");
+        Check("resmint add-systems got 1 system borrow", gotSystems == 1, $"count={gotSystems}");
     }
 
     static void TypedBindings()

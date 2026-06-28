@@ -341,8 +341,17 @@ public sealed class ComponentLinker(WasmStore store)
                 s.CompFuncs.Add(new ImportedComponentFunc(funcType, impl!));
                 break;
             }
+            case TypeBoundDesc { IsEq: true } tb:
+                // `(type (eq N))` import (e.g. a world's `use iface.{res}`): this type aliases
+                // the existing type #N. If #N is a resource, reuse its identity so handles
+                // minted/lifted through either index unify (export-param own<r> vs method self
+                // borrow<r>); otherwise a fresh identity would trap on borrow/own lift.
+                if (s.Resources.TryGetValue(tb.TypeIndex, out var aliased))
+                    s.Resources[(uint)s.Types.Count] = aliased;
+                s.Types.Add(s.Types[(int)tb.TypeIndex]);
+                break;
             case TypeBoundDesc:
-                // imported (abstract) resource type: register an identity slot
+                // imported (abstract) `(sub resource)` type: register a fresh identity slot
                 ProcessType(new TypeResourceDef(new ResourceType(WasmTypes.I32, null)), s);
                 break;
             case InstanceDesc id:

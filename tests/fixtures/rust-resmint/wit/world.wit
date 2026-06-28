@@ -1,0 +1,16 @@
+package test:resmint;
+
+interface app {
+  resource system {
+    constructor(name: string);
+  }
+  resource app {
+    add-systems: func(systems: list<borrow<system>>);
+  }
+}
+
+world guest {
+  import app;
+  use app.{app};
+  export setup: func(app: app);
+}
