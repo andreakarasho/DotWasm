@@ -32,3 +32,8 @@ Cross-interface resource fixtures:
 - `resimp.wasm` — world imports interface `store` (resource `bucket` + constructor/add);
                   the host implements it (rep = host state key). Source:
                   `tests/fixtures/rust-resimp`. Tests host-implemented imported resources.
+
+WASI fixture:
+- `wasiapp.wasm` — a **std** wasm32-wasip2 component (println! + SystemTime). Imports the
+                   full WASI 0.2.3 set. Run it with `DotWasm.Wasi.WasiShim`. Source:
+                   `tests/fixtures/rust-wasiapp`.

@@ -26,8 +26,13 @@ public sealed class ComponentLinker(WasmStore store)
         var state = new ComponentInstanceState();
         var exports = new Dictionary<string, object>();
 
+        var trace = Environment.GetEnvironmentVariable("DOTWASM_TRACE") == "1";
+        var di = 0;
         foreach (var def in component.Definitions)
+        {
+            if (trace) Console.Error.WriteLine($"[{di++}] {def.GetType().Name}");
             Process(def, state, exports);
+        }
 
         return new ComponentInstance(state, exports);
     }
@@ -378,9 +383,21 @@ public sealed class ComponentLinker(WasmStore store)
                     switch (ed.Desc)
                     {
                         case TypeBoundDesc { IsEq: true } tb:
-                            local.Add(new TypeValDef(new DefinedTypeRef(tb.TypeIndex)));
-                            typeExportIndex[ed.Name] = local.Count - 1;
+                        {
+                            var slot = local.Count;
+                            if (TryResolveLocalResource(local, localResources, (int)tb.TypeIndex, out var rid))
+                            {
+                                localResources[slot] = rid!;
+                                local.Add(new TypeResourceDef(new ResourceType(WasmTypes.I32, null)));
+                                resourceExportName[ed.Name] = slot;
+                            }
+                            else
+                            {
+                                local.Add(new TypeValDef(new DefinedTypeRef(tb.TypeIndex)));
+                                typeExportIndex[ed.Name] = slot;
+                            }
                             break;
+                        }
                         case TypeBoundDesc { IsEq: false }: // sub resource
                             var rt = new ResourceTypeIdentity();
                             localResources[local.Count] = rt;
@@ -392,7 +409,18 @@ public sealed class ComponentLinker(WasmStore store)
                             break;
                     }
                     break;
-                // core-type and alias decls inside instance types are not needed here
+                case InstanceAliasDecl ad when ad.Alias.Sort == ComponentSortKind.Type:
+                    // A type-sort alias occupies a slot in the instance type's type index space.
+                    // An outer alias to a resource already shared into the component's type space
+                    // (e.g. output-stream defined in io/streams and used by cli/stdout) must reuse
+                    // that identity; otherwise register a fresh placeholder.
+                    localResources[local.Count] =
+                        ad.Alias is AliasOuter outer && s.Resources.TryGetValue(outer.Index, out var shared)
+                            ? shared
+                            : new ResourceTypeIdentity();
+                    local.Add(new TypeResourceDef(new ResourceType(WasmTypes.I32, null)));
+                    break;
+                // core-type decls occupy the core type space, not the value type space; skip.
             }
         }
 
@@ -427,6 +455,30 @@ public sealed class ComponentLinker(WasmStore store)
         }
 
         return result;
+    }
+
+    // Follow type-index refs within an instance type's local space; if they land on a resource,
+    // return its identity (so a re-exported / aliased resource keeps a single identity).
+    static bool TryResolveLocalResource(
+        List<ComponentDefType> local,
+        Dictionary<int, ResourceTypeIdentity> localResources,
+        int index,
+        out ResourceTypeIdentity? identity)
+    {
+        var guard = 0;
+        while (index >= 0 && index < local.Count && guard++ < 10_000)
+        {
+            if (localResources.TryGetValue(index, out identity))
+                return true;
+            if (local[index] is TypeValDef { Type: DefinedTypeRef r })
+            {
+                index = (int)r.TypeIndex;
+                continue;
+            }
+            break;
+        }
+        identity = null;
+        return false;
     }
 
     static ResourceTypeIdentity[] BuildResourceArray(int count, Dictionary<int, ResourceTypeIdentity> map)

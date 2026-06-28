@@ -64,16 +64,19 @@ public sealed class ComponentTypeContext
     public ComponentValType Structural(ComponentValType t)
     {
         // Follow type-index references (including type aliases) to a structural form.
+        var guard = 0;
         while (t is DefinedTypeRef r)
         {
+            if (++guard > 10_000)
+                throw new WasmComponentException($"Cyclic type reference at type #{r.TypeIndex}.");
             var def = types[(int)r.TypeIndex];
+            // A bare reference to a resource type denotes an owned handle (WIT shorthand).
+            if (def is TypeResourceDef)
+                return new OwnType(r.TypeIndex);
             t = def switch
             {
                 TypeValDef v => v.Type,
-                TypeResourceDef => throw new WasmComponentException(
-                    "Resource type used directly as a value type (expected own/borrow)."),
-                _ => throw new WasmComponentException(
-                    $"Type #{r.TypeIndex} is not a value type."),
+                _ => throw new WasmComponentException($"Type #{r.TypeIndex} is not a value type."),
             };
         }
 

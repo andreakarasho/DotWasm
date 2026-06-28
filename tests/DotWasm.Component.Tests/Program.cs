@@ -32,7 +32,7 @@ if (args.Length >= 2 && args[0] == "inst")
     }
     catch (Exception e)
     {
-        Console.WriteLine($"INSTANTIATE FAILED: {e.GetType().Name}: {e.Message}");
+        Console.WriteLine($"INSTANTIATE FAILED: {e}");
         return 1;
     }
 }
@@ -81,6 +81,7 @@ static class Tests
         try { CrossInterfaceResource(); } catch (Exception e) { Check("cross-interface resource (threw)", false, e.ToString()); }
         try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
         try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
+        try { Wasi(); } catch (Exception e) { Check("wasi (threw)", false, e.ToString()); }
 
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         return failed == 0 ? 0 : 1;
@@ -295,6 +296,30 @@ static class Tests
         var counter = ops.NewCounter(10);
         CheckEq("typed counter.Increment() == 11", 11, counter.Increment());
         CheckEq("typed counter.Get() == 11", 11, counter.Get());
+    }
+
+    static void Wasi()
+    {
+        Console.WriteLine("[wasiapp.wasm  (real std wasm32-wasip2 + WASI shim)]");
+        var path = Path.Combine(FixturesDir(), "wasiapp.wasm");
+        var component = ComponentEncoding.Decode(File.ReadAllBytes(path));
+        var linker = new ComponentLinker(new WasmStore());
+
+        var shim = new DotWasm.Wasi.WasiShim();
+        var outBuf = new StringWriter();
+        var errBuf = new StringWriter();
+        shim.Stdout = outBuf;
+        shim.Stderr = errBuf;
+        shim.Register(linker);
+
+        var inst = linker.Instantiate(component);
+        // run() prints to stdout/stderr (WASI streams) and returns the wall-clock unix seconds.
+        var now = (ulong)inst.Invoke("run")[0]!;
+
+        Check("wasi stdout captured", outBuf.ToString().Contains("hello from wasi stdout"), $"out=[{outBuf}]");
+        Check("wasi stderr captured", errBuf.ToString().Contains("hello from wasi stderr"), $"err=[{errBuf}]");
+        var nowRef = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        Check("wasi wall-clock plausible", now > 1_700_000_000UL && now <= nowRef + 5, $"now={now}");
     }
 }
 

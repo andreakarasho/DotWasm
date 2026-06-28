@@ -166,9 +166,10 @@ public static class ComponentEncoding
         var tag = reader.ReadByte();
         switch (tag)
         {
-            // primitives (defvaltype form)
+            // primitives (defvaltype form): the tag byte 0x73..0x7f maps to the same
+            // primitive as the negative valtype code, i.e. code = tag - 0x80.
             case >= 0x73 and <= 0x7f:
-                return new TypeValDef(new PrimitiveType(PrimitiveFromCode((sbyte)tag)));
+                return new TypeValDef(new PrimitiveType(PrimitiveFromCode(tag - 0x80)));
             case 0x72: // record
                 return new TypeValDef(ReadRecord(ref reader));
             case 0x71: // variant

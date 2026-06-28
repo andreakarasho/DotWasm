@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DotWasm.Runtime\DotWasm.Runtime.csproj" />
     <ProjectReference Include="..\..\src\DotWasm.Encoding\DotWasm.Encoding.csproj" />
+    <ProjectReference Include="..\..\src\DotWasm.Wasi\DotWasm.Wasi.csproj" />
   </ItemGroup>
 </Project>

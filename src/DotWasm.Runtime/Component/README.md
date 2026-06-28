@@ -92,8 +92,24 @@ linker.DefineImportFunc("pkg:ns/store", "[constructor]bucket", a => { var r = ne
 linker.DefineImportFunc("pkg:ns/store", "[method]bucket.add", a => { var self = (ResourceValue)a[0]!; state[self.Rep] += (int)a[1]!; return [state[self.Rep]]; });
 ```
 
+## WASI
+
+Components built with the default toolchain (Rust `wasm32-wasip2`, jco, C# wasi-wasm) import
+WASI 0.2. `DotWasm.Wasi.WasiShim` provides host implementations for a useful subset:
+
+```csharp
+var linker = new ComponentLinker(new WasmStore());
+new DotWasm.Wasi.WasiShim().Register(linker);   // stdout/stderr/clocks/random/env/exit
+var inst = linker.Instantiate(component);
+inst.Invoke("run");                              // println! goes to Console
+```
+
+Implemented: cli stdout/stderr/stdin, io/streams (output-stream write), clocks
+(wall + monotonic), random, cli environment/exit. Other WASI interfaces (full filesystem,
+sockets, io/poll) are left unimplemented and only fault if a component actually calls them.
+
 ## Not supported
 
-WASI is provided separately (see the WASI shim). Out of scope in the core runtime:
-async/streams/futures, value imports/exports, component `start`, general arbitrary nested
-components beyond the wit-bindgen export shim.
+Out of scope in the core runtime: async/streams/futures, value imports/exports, component
+`start`, general arbitrary nested components beyond the wit-bindgen export shim, and the
+WASI interfaces the shim doesn't cover.
