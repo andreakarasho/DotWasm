@@ -1,0 +1,19 @@
+package test:resret;
+
+interface store {
+  resource item {
+    value: func() -> s32;
+  }
+  resource bag {
+    // host method returns option<own<resource>> (mirrors query.iter -> option<query-result>)
+    next: func() -> option<item>;
+    // host method returns own<resource> directly
+    make: func(v: s32) -> item;
+  }
+  make-bag: func() -> bag;
+}
+
+world app {
+  import store;
+  export run: func() -> s32;
+}

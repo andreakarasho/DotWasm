@@ -82,6 +82,7 @@ static class Tests
         try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
         try { ExportMintedHostResource(); } catch (Exception e) { Check("export-minted host resource (threw)", false, e.ToString()); }
         try { TypeContextCacheGrowth(); } catch (Exception e) { Check("type-context cache growth (threw)", false, e.ToString()); }
+        try { HostMethodReturnsResource(); } catch (Exception e) { Check("host method returns resource (threw)", false, e.ToString()); }
         try { TypedBindings(); } catch (Exception e) { Check("typed bindings (threw)", false, e.ToString()); }
         try { Wasi(); } catch (Exception e) { Check("wasi (threw)", false, e.ToString()); }
         try { Allocations(); } catch (Exception e) { Check("allocations (threw)", false, e.ToString()); }
@@ -314,6 +315,36 @@ static class Tests
         inst2.Invoke("setup", 100);
         Check("resmint add-systems got self app (rep 100)", gotSelf == 100, $"self={gotSelf}");
         Check("resmint add-systems got 1 system borrow", gotSystems == 1, $"count={gotSystems}");
+    }
+
+    static void HostMethodReturnsResource()
+    {
+        // Mirrors ui-tick: a host method returns own<resource> and option<own<resource>>
+        // (query.iter -> option<query-result>). resimp only covers constructor-returns-own.
+        Console.WriteLine("[resret.wasm  (host method returns own<resource> / option<own<resource>>)]");
+        var path = Path.Combine(FixturesDir(), "resret.wasm");
+        var linker = new ComponentLinker(new WasmStore());
+
+        var values = new Dictionary<int, int>();
+        var nextRep = 1;
+        var iter = 0;
+        var st = "test:resret/store";
+        linker.DefineImportFunc(st, "make-bag", _ => [1]); // bag rep
+        linker.DefineImportFunc(st, "[method]bag.make", a =>
+        {
+            var rep = ++nextRep; values[rep] = (int)a[1]!; return [rep]; // own<item>
+        });
+        linker.DefineImportFunc(st, "[method]bag.next", _ =>
+        {
+            if (iter >= 2) return [OptionValue.None];          // drain after 2
+            var rep = ++nextRep; values[rep] = (iter == 0 ? 10 : 20); iter++;
+            return [new OptionValue(true, rep)];               // some(own<item>) as raw rep
+        });
+        linker.DefineImportFunc(st, "[method]item.value", a => [values[((ResourceValue)a[0]!).Rep]]);
+
+        var inst = linker.Instantiate(ComponentEncoding.Decode(File.ReadAllBytes(path)));
+        // run() = make(100).value() + next(10) + next(20) = 130
+        CheckEq("resret run() == 130", 130, inst.Invoke("run")[0]);
     }
 
     static void TypeContextCacheGrowth()
