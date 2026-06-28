@@ -68,7 +68,7 @@ public sealed class ComponentInstanceState
     public List<GlobalInstance> CoreGlobals { get; } = [];
     public List<CoreTypeDef> CoreTypes { get; } = [];
     public List<IComponentCallable> CompFuncs { get; } = [];
-    public List<ComponentSubInstance> CompInstances { get; } = [];
+    public List<ComponentInstanceExports> CompInstances { get; } = [];
     public List<DotWasm.Models.Component.Component> SubComponents { get; } = [];
     public List<ComponentDefType> Types { get; } = [];
     public Dictionary<uint, ResourceTypeIdentity> Resources { get; } = [];
@@ -225,6 +225,18 @@ public sealed class ComponentFunc : IComponentCallable
         Handles = state.Handles,
         InstanceIdentity = state,
     };
+}
+
+/// <summary>
+/// A component instance in the instance index space: named function, type and resource
+/// exports. Used for both imported instances (funcs are host-backed) and instances built
+/// from inline-export bags or the export shim.
+/// </summary>
+public sealed class ComponentInstanceExports
+{
+    public Dictionary<string, IComponentCallable> Funcs { get; } = [];
+    public Dictionary<string, DotWasm.Models.Component.ComponentValType> Types { get; } = [];
+    public Dictionary<string, ResourceTypeIdentity> Resources { get; } = [];
 }
 
 /// <summary>A component instance's named function exports (e.g. an exported interface).</summary>

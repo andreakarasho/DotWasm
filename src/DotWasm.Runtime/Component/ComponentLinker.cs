@@ -12,9 +12,14 @@ namespace DotWasm.Runtime.Component;
 public sealed class ComponentLinker(WasmStore store)
 {
     readonly Dictionary<string, Func<object?[], object?[]>> hostImports = [];
+    readonly Dictionary<string, Func<object?[], object?[]>> hostImportFuncs = [];
 
-    /// <summary>Provide a host implementation for a component import, keyed by its import name.</summary>
+    /// <summary>Provide a host implementation for a top-level function import, keyed by import name.</summary>
     public void DefineImport(string name, Func<object?[], object?[]> impl) => hostImports[name] = impl;
+
+    /// <summary>Provide a host implementation for a function of an imported interface (instance import).</summary>
+    public void DefineImportFunc(string interfaceName, string funcName, Func<object?[], object?[]> impl) =>
+        hostImportFuncs[$"{interfaceName}#{funcName}"] = impl;
 
     public ComponentInstance Instantiate(ModelComponent component)
     {
@@ -214,7 +219,24 @@ public sealed class ComponentLinker(WasmStore store)
                 switch (ae.Sort)
                 {
                     case ComponentSortKind.Func:
-                        s.CompFuncs.Add(compInst.GetFunc(ae.Name));
+                        if (!compInst.Funcs.TryGetValue(ae.Name, out var f))
+                            WasmComponentException.Throw($"Instance has no func export '{ae.Name}'.");
+                        s.CompFuncs.Add(f!);
+                        break;
+                    case ComponentSortKind.Type:
+                        if (compInst.Resources.TryGetValue(ae.Name, out var rt))
+                        {
+                            s.Resources[(uint)s.Types.Count] = rt;
+                            s.Types.Add(new TypeResourceDef(new ResourceType(WasmTypes.I32, null)));
+                        }
+                        else if (compInst.Types.TryGetValue(ae.Name, out var vt))
+                        {
+                            s.Types.Add(new TypeValDef(vt));
+                        }
+                        else
+                        {
+                            WasmComponentException.Throw($"Instance has no type export '{ae.Name}'.");
+                        }
                         break;
                     default:
                         WasmComponentException.Throw($"Unsupported component export alias sort {ae.Sort}.");
@@ -318,11 +340,126 @@ public sealed class ComponentLinker(WasmStore store)
                 // imported (abstract) resource type: register an identity slot
                 ProcessType(new TypeResourceDef(new ResourceType(WasmTypes.I32, null)), s);
                 break;
+            case InstanceDesc id:
+                s.CompInstances.Add(BuildImportedInstance(import.Name, id.TypeIndex, s));
+                break;
             default:
                 WasmComponentException.Throw($"Unsupported import descriptor {import.Desc.GetType().Name}.");
                 break;
         }
     }
+
+    /// <summary>
+    /// Build an imported component instance from its instance type. Type exports are inlined
+    /// into self-contained value types; function exports are backed by host delegates
+    /// (registered via <see cref="DefineImportFunc"/>).
+    /// </summary>
+    ComponentInstanceExports BuildImportedInstance(string interfaceName, uint typeIndex, ComponentInstanceState s)
+    {
+        var instanceType = (s.Types[(int)typeIndex] as TypeInstanceDef)?.Type
+            ?? throw new WasmComponentException($"Import '{interfaceName}' is not an instance type.");
+
+        // Reconstruct the instance type's local type index space (type decls and type-exports
+        // each occupy an index; func-exports do not).
+        var local = new List<ComponentDefType>();
+        var localResources = new Dictionary<int, ResourceTypeIdentity>();
+        var typeExportIndex = new Dictionary<string, int>();
+        var funcExportIndex = new Dictionary<string, int>();
+        var resourceExportName = new Dictionary<string, int>();
+
+        foreach (var decl in instanceType.Decls)
+        {
+            switch (decl)
+            {
+                case InstanceTypeDecl td:
+                    local.Add(td.Type);
+                    break;
+                case InstanceExportDecl ed:
+                    switch (ed.Desc)
+                    {
+                        case TypeBoundDesc { IsEq: true } tb:
+                            local.Add(new TypeValDef(new DefinedTypeRef(tb.TypeIndex)));
+                            typeExportIndex[ed.Name] = local.Count - 1;
+                            break;
+                        case TypeBoundDesc { IsEq: false }: // sub resource
+                            var rt = new ResourceTypeIdentity();
+                            localResources[local.Count] = rt;
+                            resourceExportName[ed.Name] = local.Count;
+                            local.Add(new TypeResourceDef(new ResourceType(WasmTypes.I32, null)));
+                            break;
+                        case FuncDesc fd:
+                            funcExportIndex[ed.Name] = (int)fd.TypeIndex;
+                            break;
+                    }
+                    break;
+                // core-type and alias decls inside instance types are not needed here
+            }
+        }
+
+        var localCtx = new ComponentTypeContext([.. local], BuildResourceArray(local.Count, localResources));
+        var result = new ComponentInstanceExports();
+
+        foreach (var (name, idx) in typeExportIndex)
+            result.Types[name] = Inline(new DefinedTypeRef((uint)idx), localCtx);
+
+        foreach (var (name, idx) in resourceExportName)
+            result.Resources[name] = localResources[idx];
+
+        foreach (var (name, funcTypeIdx) in funcExportIndex)
+        {
+            var ft = (local[funcTypeIdx] as TypeFuncDef)?.Type
+                ?? throw new WasmComponentException($"Import '{interfaceName}' func '{name}' has no func type.");
+            var inlined = InlineFunc(ft, localCtx);
+            var key = $"{interfaceName}#{name}";
+            var impl = hostImportFuncs.TryGetValue(key, out var h)
+                ? h
+                : MissingImport(key);
+            result.Funcs[name] = new ImportedComponentFunc(inlined, impl);
+        }
+
+        return result;
+    }
+
+    static ResourceTypeIdentity[] BuildResourceArray(int count, Dictionary<int, ResourceTypeIdentity> map)
+    {
+        var arr = new ResourceTypeIdentity[count];
+        foreach (var (i, rt) in map)
+            arr[i] = rt;
+        return arr;
+    }
+
+    static Func<object?[], object?[]> MissingImport(string key) =>
+        _ => throw new WasmComponentException($"No host implementation for imported function '{key}'. Use DefineImportFunc.");
+
+    // ---- Type inlining (resolve instance-local type refs to self-contained types) ----
+
+    static ComponentValType Inline(ComponentValType t, ComponentTypeContext ctx)
+    {
+        var s = ctx.Structural(t);
+        return s switch
+        {
+            PrimitiveType => s,
+            EnumType => s,
+            FlagsType => s,
+            RecordType rec => new RecordType(
+                [.. rec.Fields.Select(f => new RecordField(f.Name, Inline(f.Type, ctx)))]),
+            VariantType v => new VariantType(
+                [.. v.Cases.Select(c => new VariantCase(c.Name, c.Type is null ? null : Inline(c.Type, ctx), c.Refines))]),
+            ListType l => new ListType(Inline(l.Element, ctx), l.FixedLength),
+            TupleType tup => new TupleType([.. tup.Types.Select(x => Inline(x, ctx))]),
+            OptionType o => new OptionType(Inline(o.Type, ctx)),
+            ResultType r => new ResultType(
+                r.Ok is null ? null : Inline(r.Ok, ctx),
+                r.Err is null ? null : Inline(r.Err, ctx)),
+            OwnType or BorrowType => throw new WasmComponentException(
+                "Cross-interface resource handles are not yet supported."),
+            _ => s,
+        };
+    }
+
+    static ComponentFuncType InlineFunc(ComponentFuncType ft, ComponentTypeContext ctx) => new(
+        [.. ft.Params.Select(p => new NamedValType(p.Name, Inline(p.Type, ctx)))],
+        ft.Result is null ? null : Inline(ft.Result, ctx));
 
     void ProcessExport(ComponentExport export, ComponentInstanceState s, Dictionary<string, object> exports)
     {
@@ -338,7 +475,7 @@ public sealed class ComponentLinker(WasmStore store)
             case ComponentSortKind.Instance:
             {
                 var inst = s.CompInstances[(int)export.Idx.Index];
-                exports[export.Name] = inst;
+                exports[export.Name] = ToHostInstance(inst);
                 s.CompInstances.Add(inst);
                 break;
             }
@@ -354,27 +491,38 @@ public sealed class ComponentLinker(WasmStore store)
         }
     }
 
-    ComponentSubInstance BuildCompInstance(ComponentInstanceExpr expr, ComponentInstanceState s)
+    static ComponentSubInstance ToHostInstance(ComponentInstanceExports inst)
+    {
+        var funcs = new Dictionary<string, ComponentFunc>();
+        foreach (var (name, f) in inst.Funcs)
+            if (f is ComponentFunc cf)
+                funcs[name] = cf;
+        return new ComponentSubInstance(funcs, new Dictionary<string, ResourceTypeIdentity>(inst.Resources));
+    }
+
+    ComponentInstanceExports BuildCompInstance(ComponentInstanceExpr expr, ComponentInstanceState s)
     {
         switch (expr)
         {
             case ComponentInlineExports inline:
             {
-                var funcs = new Dictionary<string, ComponentFunc>();
-                var resources = new Dictionary<string, ResourceTypeIdentity>();
+                var result = new ComponentInstanceExports();
                 foreach (var e in inline.Exports)
                 {
                     switch (e.Idx.Sort)
                     {
-                        case ComponentSortKind.Func when s.CompFuncs[(int)e.Idx.Index] is ComponentFunc cf:
-                            funcs[e.Name] = cf;
+                        case ComponentSortKind.Func:
+                            result.Funcs[e.Name] = s.CompFuncs[(int)e.Idx.Index];
                             break;
                         case ComponentSortKind.Type when s.Resources.TryGetValue(e.Idx.Index, out var rt):
-                            resources[e.Name] = rt;
+                            result.Resources[e.Name] = rt;
+                            break;
+                        case ComponentSortKind.Type:
+                            result.Types[e.Name] = new DefinedTypeRef(e.Idx.Index);
                             break;
                     }
                 }
-                return new ComponentSubInstance(funcs, resources);
+                return result;
             }
             case ComponentInstantiate inst:
                 return InstantiateSubComponent(s.SubComponents[(int)inst.ComponentIndex], inst.Args, s);
@@ -390,7 +538,7 @@ public sealed class ComponentLinker(WasmStore store)
     /// grouped as an interface instance. The parent's <see cref="ComponentFunc"/> objects are
     /// reused directly, so no re-lifting occurs.
     /// </summary>
-    ComponentSubInstance InstantiateSubComponent(
+    ComponentInstanceExports InstantiateSubComponent(
         DotWasm.Models.Component.Component sub,
         IReadOnlyList<ComponentInstantiateArg> args,
         ComponentInstanceState parent)
@@ -415,8 +563,7 @@ public sealed class ComponentLinker(WasmStore store)
         var childFuncs = new List<IComponentCallable>();
         var childTypes = new List<ComponentDefType>();
         var childResources = new Dictionary<uint, ResourceTypeIdentity>();
-        var funcs = new Dictionary<string, ComponentFunc>();
-        var resources = new Dictionary<string, ResourceTypeIdentity>();
+        var result = new ComponentInstanceExports();
 
         foreach (var def in sub.Definitions)
         {
@@ -449,11 +596,11 @@ public sealed class ComponentLinker(WasmStore store)
                     var export = defExport.Export;
                     switch (export.Idx.Sort)
                     {
-                        case ComponentSortKind.Func when childFuncs[(int)export.Idx.Index] is ComponentFunc cf:
-                            funcs[export.Name] = cf;
+                        case ComponentSortKind.Func:
+                            result.Funcs[export.Name] = childFuncs[(int)export.Idx.Index];
                             break;
                         case ComponentSortKind.Type when childResources.TryGetValue(export.Idx.Index, out var rt):
-                            resources[export.Name] = rt;
+                            result.Resources[export.Name] = rt;
                             break;
                     }
                     break;
@@ -468,7 +615,7 @@ public sealed class ComponentLinker(WasmStore store)
             }
         }
 
-        return new ComponentSubInstance(funcs, resources);
+        return result;
     }
 
     // ---- Lowered import (component -> host) ----

@@ -1,0 +1,15 @@
+package test:multi;
+
+interface types {
+  record vec2 { x: s32, y: s32 }
+}
+
+interface math {
+  use types.{vec2};
+  add: func(a: vec2, b: vec2) -> vec2;
+  len2: func(v: vec2) -> s32;
+}
+
+world app {
+  export math;
+}

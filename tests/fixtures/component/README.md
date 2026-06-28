@@ -17,3 +17,10 @@ Real toolchain output (regenerate from `tests/fixtures/rust-component`):
 
 `ops.wasm` is built `no_std` with an inline bump allocator so it has no WASI imports
 (WASI is out of scope for this Component Model support).
+
+Cross-interface / interface-import fixtures (regenerate via `cargo component build --release`):
+- `multi.wasm` — two interfaces, `math` does `use types.{vec2}`; world exports `math`.
+                 Source: `tests/fixtures/rust-multiwit`. Tests type-only instance imports.
+- `imp2.wasm`  — world imports interface `host-api` (add/greet/record-sum), exports run/run-str
+                 that call the imports. Source: `tests/fixtures/rust-impwit`. Tests host-
+                 implemented interface imports (DefineImportFunc).

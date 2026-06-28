@@ -14,6 +14,28 @@ if (args.Length >= 2 && args[0] == "dump")
     return 0;
 }
 
+if (args.Length >= 2 && args[0] == "inst")
+{
+    var component = ComponentEncoding.Decode(File.ReadAllBytes(args[1]));
+    try
+    {
+        var inst = new ComponentLinker(new WasmStore()).Instantiate(component);
+        Console.WriteLine("INSTANTIATED. exports:");
+        foreach (var (name, val) in inst.Exports)
+        {
+            Console.WriteLine($"  {name}: {val.GetType().Name}");
+            if (val is ComponentSubInstance sub)
+                foreach (var f in sub.Funcs.Keys) Console.WriteLine($"      fn {f}");
+        }
+        return 0;
+    }
+    catch (Exception e)
+    {
+        Console.WriteLine($"INSTANTIATE FAILED: {e.GetType().Name}: {e.Message}");
+        return 1;
+    }
+}
+
 return Tests.Run();
 
 static class Tests
@@ -53,6 +75,8 @@ static class Tests
         try { Strings(); } catch (Exception e) { Check("strings (threw)", false, e.ToString()); }
         try { Aggregates(); } catch (Exception e) { Check("aggregates (threw)", false, e.ToString()); }
         try { Resources(); } catch (Exception e) { Check("resources (threw)", false, e.ToString()); }
+        try { CrossInterfaceUse(); } catch (Exception e) { Check("cross-interface use (threw)", false, e.ToString()); }
+        try { InterfaceImports(); } catch (Exception e) { Check("interface imports (threw)", false, e.ToString()); }
 
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         return failed == 0 ? 0 : 1;
@@ -164,6 +188,37 @@ static class Tests
         var c2 = ops.Invoke("[constructor]counter", 100)[0];
         CheckEq("c2.increment() == 101", 101, ops.Invoke("[method]counter.increment", c2)[0]);
         CheckEq("c1.get() still 12", 12, ops.Invoke("[method]counter.get", counter)[0]);
+    }
+
+    static void CrossInterfaceUse()
+    {
+        Console.WriteLine("[multi.wasm  (tier 1: interface `use` shared types)]");
+        var inst = Instantiate("multi.wasm");
+        var math = inst.GetInstance("test:multi/math")!;
+        // add(vec2{1,2}, vec2{3,4}) -> vec2{4,6}   (vec2 comes from a `use`d interface)
+        var v = (object?[])math.Invoke("add", new object?[] { 1, 2 }, new object?[] { 3, 4 })[0]!;
+        Check("math.add -> {4,6}", (int)v[0]! == 4 && (int)v[1]! == 6, $"{v[0]},{v[1]}");
+        CheckEq("math.len2({3,4}) == 25", 25, math.Invoke("len2", (object?)new object?[] { 3, 4 })[0]);
+    }
+
+    static void InterfaceImports()
+    {
+        Console.WriteLine("[imp2.wasm  (tier 2: host-implemented interface import)]");
+        var path = Path.Combine(FixturesDir(), "imp2.wasm");
+        var component = ComponentEncoding.Decode(File.ReadAllBytes(path));
+        var linker = new ComponentLinker(new WasmStore());
+        linker.DefineImportFunc("test:imp/host-api", "add", a => [(int)a[0]! + (int)a[1]!]);
+        linker.DefineImportFunc("test:imp/host-api", "greet", a => [$"hi {(string)a[1 - 1]!}"]);
+        linker.DefineImportFunc("test:imp/host-api", "record-sum", a =>
+        {
+            var kv = (object?[])a[0]!; // record kv { key: string, value: s32 }
+            return [(int)kv[1]!];
+        });
+        var inst = linker.Instantiate(component);
+        // run() = add(40,2) + record-sum({key,100}) = 42 + 100 = 142
+        CheckEq("run() == 142 (calls imported add + record-sum)", 142, inst.Invoke("run")[0]);
+        // run-str() = greet("world") = "hi world"
+        CheckEq("run-str() == \"hi world\"", "hi world", inst.Invoke("run-str")[0]);
     }
 }
 
