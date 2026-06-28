@@ -24,3 +24,11 @@ Cross-interface / interface-import fixtures (regenerate via `cargo component bui
 - `imp2.wasm`  — world imports interface `host-api` (add/greet/record-sum), exports run/run-str
                  that call the imports. Source: `tests/fixtures/rust-impwit`. Tests host-
                  implemented interface imports (DefineImportFunc).
+
+Cross-interface resource fixtures:
+- `res2.wasm`   — resource `node` defined in interface `entity`, `use`d (borrow) by `graph`;
+                  world exports both. Source: `tests/fixtures/rust-reswit`. Tests a resource
+                  shared across exported interfaces (identity matches across the boundary).
+- `resimp.wasm` — world imports interface `store` (resource `bucket` + constructor/add);
+                  the host implements it (rep = host state key). Source:
+                  `tests/fixtures/rust-resimp`. Tests host-implemented imported resources.

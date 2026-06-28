@@ -33,19 +33,31 @@ public sealed class ComponentTypeContext
 {
     public const int PtrSize = 4;
 
+    /// <summary>Synthetic resource type indices (for resources reached only through inlined
+    /// imported-instance types) start here, above any real type-space index.</summary>
+    public const uint SyntheticResourceBase = 0x4000_0000;
+
     readonly ImmutableArray<ComponentDefType> types;
     readonly ResourceTypeIdentity[] resources;
+    readonly IReadOnlyDictionary<uint, ResourceTypeIdentity>? syntheticResources;
 
     public ComponentTypeContext(
         ImmutableArray<ComponentDefType> types,
-        ResourceTypeIdentity[] resources
+        ResourceTypeIdentity[] resources,
+        IReadOnlyDictionary<uint, ResourceTypeIdentity>? syntheticResources = null
     )
     {
         this.types = types;
         this.resources = resources;
+        this.syntheticResources = syntheticResources;
     }
 
-    public ResourceTypeIdentity Resource(uint typeIndex) => resources[(int)typeIndex];
+    public ResourceTypeIdentity Resource(uint typeIndex)
+    {
+        if (typeIndex >= SyntheticResourceBase && syntheticResources is not null)
+            return syntheticResources[typeIndex];
+        return resources[(int)typeIndex];
+    }
 
     /// <summary>Resolve type references and despecialize tuple/enum/option/result one level,
     /// returning a structural type: primitive, record, variant, list, flags, own or borrow.</summary>

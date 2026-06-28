@@ -1,0 +1,18 @@
+package test:res;
+
+interface entity {
+  resource node {
+    constructor(v: s32);
+    value: func() -> s32;
+  }
+}
+
+interface graph {
+  use entity.{node};
+  combine: func(a: borrow<node>, b: borrow<node>) -> s32;
+}
+
+world app {
+  export entity;
+  export graph;
+}

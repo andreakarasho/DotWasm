@@ -90,10 +90,10 @@ public sealed class CanonContext
                 StoreIntBits(Mem, ptr, ElemSizeFlags(flags.Names.Length), PackFlags((FlagsValue)v!, flags.Names.Length));
                 break;
             case OwnType own:
-                StoreIntBits(Mem, ptr, 4, (uint)LowerOwn((ResourceValue)v!, own.TypeIndex));
+                StoreIntBits(Mem, ptr, 4, (uint)LowerOwn(v, own.TypeIndex));
                 break;
             case BorrowType borrow:
-                StoreIntBits(Mem, ptr, 4, (uint)LowerBorrow((ResourceValue)v!, borrow.TypeIndex));
+                StoreIntBits(Mem, ptr, 4, (uint)LowerBorrow(v, borrow.TypeIndex));
                 break;
             default:
                 WasmTrapException.Throw("Unsupported type in store.");
@@ -375,10 +375,10 @@ public sealed class CanonContext
                 outBits.Add(PackFlags((FlagsValue)v!, flags.Names.Length));
                 break;
             case OwnType own:
-                outBits.Add((uint)LowerOwn((ResourceValue)v!, own.TypeIndex));
+                outBits.Add((uint)LowerOwn(v, own.TypeIndex));
                 break;
             case BorrowType borrow:
-                outBits.Add((uint)LowerBorrow((ResourceValue)v!, borrow.TypeIndex));
+                outBits.Add((uint)LowerBorrow(v, borrow.TypeIndex));
                 break;
             default:
                 WasmTrapException.Throw("Unsupported type in lower_flat.");
@@ -619,20 +619,29 @@ public sealed class CanonContext
 
     // ================= resource handles =================
 
-    int LowerOwn(ResourceValue v, uint typeIndex)
+    static int RepOf(object? v) => v switch
+    {
+        ResourceValue rv => rv.Rep,
+        int i => i,
+        uint u => (int)u,
+        null => throw new WasmTrapException("Null resource handle."),
+        _ => Convert.ToInt32(v),
+    };
+
+    int LowerOwn(object? v, uint typeIndex)
     {
         var rt = Types.Resource(typeIndex);
         RequireHandles();
-        return Handles!.Add(new ResourceHandle(rt, v.Rep, own: true));
+        return Handles!.Add(new ResourceHandle(rt, RepOf(v), own: true));
     }
 
-    int LowerBorrow(ResourceValue v, uint typeIndex)
+    int LowerBorrow(object? v, uint typeIndex)
     {
         var rt = Types.Resource(typeIndex);
         if (ReferenceEquals(InstanceIdentity, rt.ImplementingInstance))
-            return v.Rep;
+            return RepOf(v);
         RequireHandles();
-        return Handles!.Add(new ResourceHandle(rt, v.Rep, own: false));
+        return Handles!.Add(new ResourceHandle(rt, RepOf(v), own: false));
     }
 
     object LiftOwn(int i, uint typeIndex)

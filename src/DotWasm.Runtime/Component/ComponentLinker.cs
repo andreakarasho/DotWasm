@@ -399,8 +399,17 @@ public sealed class ComponentLinker(WasmStore store)
         var localCtx = new ComponentTypeContext([.. local], BuildResourceArray(local.Count, localResources));
         var result = new ComponentInstanceExports();
 
+        // Map each instance-local resource index to a synthetic global resource index, so that
+        // own/borrow inside inlined types resolve to a stable identity in the importing component.
+        var localToSynthetic = new Dictionary<uint, uint>();
+        foreach (var (localIdx, rt) in localResources)
+            localToSynthetic[(uint)localIdx] = s.RegisterSyntheticResource(rt);
+        uint ResMap(uint i) => localToSynthetic.TryGetValue(i, out var g)
+            ? g
+            : throw new WasmComponentException($"Import '{interfaceName}' references unknown resource type #{i}.");
+
         foreach (var (name, idx) in typeExportIndex)
-            result.Types[name] = Inline(new DefinedTypeRef((uint)idx), localCtx);
+            result.Types[name] = Inline(new DefinedTypeRef((uint)idx), localCtx, ResMap);
 
         foreach (var (name, idx) in resourceExportName)
             result.Resources[name] = localResources[idx];
@@ -409,7 +418,7 @@ public sealed class ComponentLinker(WasmStore store)
         {
             var ft = (local[funcTypeIdx] as TypeFuncDef)?.Type
                 ?? throw new WasmComponentException($"Import '{interfaceName}' func '{name}' has no func type.");
-            var inlined = InlineFunc(ft, localCtx);
+            var inlined = InlineFunc(ft, localCtx, ResMap);
             var key = $"{interfaceName}#{name}";
             var impl = hostImportFuncs.TryGetValue(key, out var h)
                 ? h
@@ -432,34 +441,29 @@ public sealed class ComponentLinker(WasmStore store)
         _ => throw new WasmComponentException($"No host implementation for imported function '{key}'. Use DefineImportFunc.");
 
     // ---- Type inlining (resolve instance-local type refs to self-contained types) ----
+    // resMap rewrites an instance-local resource type index to a synthetic global index.
 
-    static ComponentValType Inline(ComponentValType t, ComponentTypeContext ctx)
+    static ComponentValType Inline(ComponentValType t, ComponentTypeContext ctx, Func<uint, uint> resMap)
     {
         var s = ctx.Structural(t);
         return s switch
         {
             PrimitiveType => s,
-            EnumType => s,
             FlagsType => s,
             RecordType rec => new RecordType(
-                [.. rec.Fields.Select(f => new RecordField(f.Name, Inline(f.Type, ctx)))]),
+                [.. rec.Fields.Select(f => new RecordField(f.Name, Inline(f.Type, ctx, resMap)))]),
             VariantType v => new VariantType(
-                [.. v.Cases.Select(c => new VariantCase(c.Name, c.Type is null ? null : Inline(c.Type, ctx), c.Refines))]),
-            ListType l => new ListType(Inline(l.Element, ctx), l.FixedLength),
-            TupleType tup => new TupleType([.. tup.Types.Select(x => Inline(x, ctx))]),
-            OptionType o => new OptionType(Inline(o.Type, ctx)),
-            ResultType r => new ResultType(
-                r.Ok is null ? null : Inline(r.Ok, ctx),
-                r.Err is null ? null : Inline(r.Err, ctx)),
-            OwnType or BorrowType => throw new WasmComponentException(
-                "Cross-interface resource handles are not yet supported."),
+                [.. v.Cases.Select(c => new VariantCase(c.Name, c.Type is null ? null : Inline(c.Type, ctx, resMap), c.Refines))]),
+            ListType l => new ListType(Inline(l.Element, ctx, resMap), l.FixedLength),
+            OwnType o => new OwnType(resMap(o.TypeIndex)),
+            BorrowType b => new BorrowType(resMap(b.TypeIndex)),
             _ => s,
         };
     }
 
-    static ComponentFuncType InlineFunc(ComponentFuncType ft, ComponentTypeContext ctx) => new(
-        [.. ft.Params.Select(p => new NamedValType(p.Name, Inline(p.Type, ctx)))],
-        ft.Result is null ? null : Inline(ft.Result, ctx));
+    static ComponentFuncType InlineFunc(ComponentFuncType ft, ComponentTypeContext ctx, Func<uint, uint> resMap) => new(
+        [.. ft.Params.Select(p => new NamedValType(p.Name, Inline(p.Type, ctx, resMap)))],
+        ft.Result is null ? null : Inline(ft.Result, ctx, resMap));
 
     void ProcessExport(ComponentExport export, ComponentInstanceState s, Dictionary<string, object> exports)
     {

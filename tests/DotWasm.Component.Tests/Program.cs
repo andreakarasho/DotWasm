@@ -77,6 +77,8 @@ static class Tests
         try { Resources(); } catch (Exception e) { Check("resources (threw)", false, e.ToString()); }
         try { CrossInterfaceUse(); } catch (Exception e) { Check("cross-interface use (threw)", false, e.ToString()); }
         try { InterfaceImports(); } catch (Exception e) { Check("interface imports (threw)", false, e.ToString()); }
+        try { CrossInterfaceResource(); } catch (Exception e) { Check("cross-interface resource (threw)", false, e.ToString()); }
+        try { HostImplementedResource(); } catch (Exception e) { Check("host-implemented resource (threw)", false, e.ToString()); }
 
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         return failed == 0 ? 0 : 1;
@@ -219,6 +221,50 @@ static class Tests
         CheckEq("run() == 142 (calls imported add + record-sum)", 142, inst.Invoke("run")[0]);
         // run-str() = greet("world") = "hi world"
         CheckEq("run-str() == \"hi world\"", "hi world", inst.Invoke("run-str")[0]);
+    }
+
+    static void CrossInterfaceResource()
+    {
+        Console.WriteLine("[res2.wasm  (cross-interface resource: node used across entity+graph)]");
+        var inst = Instantiate("res2.wasm");
+        var entity = inst.GetInstance("test:res/entity")!;
+        var graph = inst.GetInstance("test:res/graph")!;
+
+        // node defined in `entity`, used (borrow) by `graph.combine` -> identities must match
+        var n1 = entity.Invoke("[constructor]node", 5)[0];
+        var n2 = entity.Invoke("[constructor]node", 7)[0];
+        Check("node is ResourceValue", n1 is ResourceValue);
+        CheckEq("entity node.value() == 5", 5, entity.Invoke("[method]node.value", n1)[0]);
+        // pass entity-made nodes to graph.combine (borrow across the interface boundary)
+        CheckEq("graph.combine(n1,n2) == 12", 12, graph.Invoke("combine", n1, n2)[0]);
+    }
+
+    static void HostImplementedResource()
+    {
+        Console.WriteLine("[resimp.wasm  (host implements an imported resource)]");
+        var path = Path.Combine(FixturesDir(), "resimp.wasm");
+        var component = ComponentEncoding.Decode(File.ReadAllBytes(path));
+        var linker = new ComponentLinker(new WasmStore());
+
+        // Host implements the `bucket` resource: rep is a key into host state.
+        var buckets = new Dictionary<int, int>();
+        var next = 1;
+        linker.DefineImportFunc("test:resimp/store", "[constructor]bucket", a =>
+        {
+            var rep = next++;
+            buckets[rep] = (int)a[0]!; // seed
+            return [rep];              // own<bucket> as a raw rep (wrapped with identity by the ABI)
+        });
+        linker.DefineImportFunc("test:resimp/store", "[method]bucket.add", a =>
+        {
+            var self = (ResourceValue)a[0]!; // borrow<bucket>
+            buckets[self.Rep] += (int)a[1]!;
+            return [buckets[self.Rep]];
+        });
+
+        var inst = linker.Instantiate(component);
+        // run() = bucket(10); add(5)=15; add(2)=17 -> 32
+        CheckEq("run() == 32 (guest uses host-implemented resource)", 32, inst.Invoke("run")[0]);
     }
 }
 

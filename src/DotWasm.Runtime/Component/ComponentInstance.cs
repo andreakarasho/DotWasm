@@ -73,6 +73,17 @@ public sealed class ComponentInstanceState
     public List<ComponentDefType> Types { get; } = [];
     public Dictionary<uint, ResourceTypeIdentity> Resources { get; } = [];
 
+    /// <summary>Resources reached only through inlined imported-instance types, at synthetic indices.</summary>
+    public Dictionary<uint, ResourceTypeIdentity> SyntheticResources { get; } = [];
+    uint nextSynthetic = ComponentTypeContext.SyntheticResourceBase;
+
+    public uint RegisterSyntheticResource(ResourceTypeIdentity rt)
+    {
+        var index = nextSynthetic++;
+        SyntheticResources[index] = rt;
+        return index;
+    }
+
     public ComponentInstanceHandles Handles { get; } = new();
 
     ComponentTypeContext? typeContext;
@@ -87,7 +98,7 @@ public sealed class ComponentInstanceState
         foreach (var (idx, rt) in Resources)
             if (idx < resources.Length)
                 resources[idx] = rt;
-        return new ComponentTypeContext([.. Types], resources);
+        return new ComponentTypeContext([.. Types], resources, SyntheticResources);
     }
 
     public MemoryInstance ResolveMemory(int index) => CoreMems[index];
