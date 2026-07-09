@@ -1,0 +1,13 @@
+package test:resimp;
+
+interface store {
+  resource bucket {
+    constructor(seed: s32);
+    add: func(n: s32) -> s32;
+  }
+}
+
+world app {
+  import store;
+  export run: func() -> s32;
+}

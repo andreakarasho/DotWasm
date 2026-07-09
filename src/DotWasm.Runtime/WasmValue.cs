@@ -26,6 +26,21 @@ public readonly struct WasmValue
         this.reference = reference;
     }
 
+    WasmValue(ulong bits, object? reference)
+    {
+        this.bits = bits;
+        this.reference = reference;
+    }
+
+    /// <summary>
+    /// Reconstructs a <see cref="WasmValue"/> from its raw payload pair. Used by the
+    /// split value stack's generic path to round-trip a value (Push -> UnsafePop) so the
+    /// original value is reproduced EXACTLY, including both the scalar bits and any
+    /// managed reference.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static WasmValue Combine(ulong bits, object? reference) => new(bits, reference);
+
     public static readonly WasmValue NullReference = FromRaw((ulong)(long)FunctionAddress.Null);
 
     public ulong Bits => bits;

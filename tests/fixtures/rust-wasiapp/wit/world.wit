@@ -1,0 +1,4 @@
+package test:wasiapp;
+world app {
+  export run: func() -> u64;
+}

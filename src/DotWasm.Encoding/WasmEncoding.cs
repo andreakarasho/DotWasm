@@ -1932,7 +1932,7 @@ public static class WasmEncoding
                 return ReadTagType(ref reader, types);
             default:
                 WasmDecodeException.Throw("Invalid external kind.");
-                return null!;
+                throw null!; // unreachable: Throw is [DoesNotReturn]
         }
     }
 

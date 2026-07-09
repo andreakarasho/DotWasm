@@ -1,0 +1,13 @@
+package test:rmping;
+
+interface app {
+  resource app {
+    ping: func();
+  }
+}
+
+world guest {
+  import app;
+  use app.{app};
+  export setup: func(app: app);
+}

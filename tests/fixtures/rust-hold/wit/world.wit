@@ -1,0 +1,20 @@
+package test:hold;
+
+interface store {
+  resource node {
+    label: func() -> s32;
+  }
+  make: func(v: s32) -> node;
+}
+
+world app {
+  import store;
+  // create() mints a node and STORES it in a guest global (does not drop it).
+  export create: func();
+  // reuse() calls a method on the held node — exercises a host resource handle
+  // held across guest calls (the ecs-ui idToHandle pattern).
+  export reuse: func() -> s32;
+  // release() drops the held node — the guest's resource.drop must reach the host's
+  // drop handler so it can free the rep.
+  export release: func();
+}

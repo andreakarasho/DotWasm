@@ -1,0 +1,13 @@
+[package]
+name = "wasiapp"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+wit-bindgen-rt = { version = "0.43", features = ["bitflags"] }
+[package.metadata.component]
+package = "test:wasiapp"
+[profile.release]
+opt-level = "s"
+[workspace]

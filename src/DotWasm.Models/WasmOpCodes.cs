@@ -514,4 +514,35 @@ public static class WasmOpCodes
     public const uint I16x8RelaxedQ15MulrS = 0x111;
     public const uint I16x8RelaxedDotI8x16I7x16S = 0x112;
     public const uint I32x4RelaxedDotI8x16I7x16AddS = 0x113;
+
+    // ─── Synthetic superinstruction opcodes ──────────────────────────────────────
+    // Not part of the Wasm binary format. Produced by load-time fusion in Expression
+    // (fusing `i32.const C; i32.<binop>` into one handler that applies the immediate to
+    // the stack top in place) and dispatched only by the interpreter's PRIMARY opcode
+    // switch. These byte values (0xD7-0xDF) are unused as PRIMARY opcodes — they are
+    // otherwise only assigned to SIMD sub-opcode constants, which are dispatched by the
+    // separate SIMD extension-code sub-switch, never the primary switch. Keeping the
+    // codes within the byte range preserves the primary switch's dense jump table.
+    public const byte FusedI32ConstAdd = 0xD7;
+    public const byte FusedI32ConstSub = 0xD8;
+    public const byte FusedI32ConstMul = 0xD9;
+    public const byte FusedI32ConstAnd = 0xDA;
+    public const byte FusedI32ConstOr = 0xDB;
+    public const byte FusedI32ConstXor = 0xDC;
+    public const byte FusedI32ConstShl = 0xDD;
+    public const byte FusedI32ConstShrS = 0xDE;
+    public const byte FusedI32ConstShrU = 0xDF;
+
+    // Fused `local.get X; i32.const C; i32.<binop>` (3 instructions -> 1): pushes
+    // (localX <binop> C). The local is guaranteed i32 (scalar) because it feeds an i32
+    // binop, so no reference check is needed. Free primary byte slots 0xE0-0xE8.
+    public const byte FusedLocalGetConstAdd = 0xE0;
+    public const byte FusedLocalGetConstSub = 0xE1;
+    public const byte FusedLocalGetConstMul = 0xE2;
+    public const byte FusedLocalGetConstAnd = 0xE3;
+    public const byte FusedLocalGetConstOr = 0xE4;
+    public const byte FusedLocalGetConstXor = 0xE5;
+    public const byte FusedLocalGetConstShl = 0xE6;
+    public const byte FusedLocalGetConstShrS = 0xE7;
+    public const byte FusedLocalGetConstShrU = 0xE8;
 }

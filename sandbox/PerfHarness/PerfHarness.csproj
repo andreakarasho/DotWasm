@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <Configuration>Release</Configuration>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotWasm\DotWasm.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Benchmark\grayscale_bench.wasm" CopyToOutputDirectory="PreserveNewest" Link="grayscale_bench.wasm" />
+    <None Include="..\Benchmark\collatz_bench.wasm" CopyToOutputDirectory="PreserveNewest" Link="collatz_bench.wasm" />
+  </ItemGroup>
+</Project>

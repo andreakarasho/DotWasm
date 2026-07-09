@@ -1,0 +1,14 @@
+package test:imp;
+
+interface host-api {
+  record kv { key: string, value: s32 }
+  add: func(a: s32, b: s32) -> s32;
+  greet: func(name: string) -> string;
+  record-sum: func(r: kv) -> s32;
+}
+
+world app {
+  import host-api;
+  export run: func() -> s32;
+  export run-str: func() -> string;
+}
